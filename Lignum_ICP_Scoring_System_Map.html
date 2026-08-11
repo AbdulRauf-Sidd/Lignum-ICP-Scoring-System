@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICP Scoring & Accounts System — Architecture & Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A30; --ink-2:#33474F; --paper:#EAE8E0; --surface:#FAF9F4; --surface-2:#F2F0E8;
+    --line:#CBC7BB; --line-soft:#DEDBD0; --steel:#5F727A; --slate-blue:#3C5A66;
+    --amber:#C9791C; --amber-deep:#A4600F; --amber-tint:#F4E7D2; --green:#3E7D5A; --green-tint:#E2EDE4;
+    --display:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;
+    --body:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);background-size:32px 32px;background-position:-1px -1px;}
+  .wrap{max-width:1240px;margin:0 auto;padding:26px 22px 60px;}
+  .specbar{display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--ink);color:var(--surface);padding:12px 18px;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;}
+  .specbar .meta{display:flex;gap:22px;color:#A9BBC0;flex-wrap:wrap;justify-content:flex-end;}
+  .specbar .meta b{color:var(--surface);font-weight:500;}
+  .hero{border:1px solid var(--line);border-top:none;background:var(--surface);padding:34px 32px 30px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:var(--amber-deep);margin:0 0 14px;display:flex;align-items:center;gap:10px;}
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--amber);}
+  h1{font-family:var(--display);font-weight:600;font-size:clamp(26px,4.2vw,42px);line-height:1.05;letter-spacing:-0.02em;margin:0 0 14px;max-width:22ch;}
+  h1 .lead{color:var(--amber-deep);}
+  .hero p{font-size:clamp(15px,1.5vw,18px);color:var(--ink-2);max-width:68ch;margin:0;}
+  section{margin-top:34px;}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 18px;}
+  .sec-num{font-family:var(--mono);font-size:13px;color:var(--steel);font-weight:600;border:1px solid var(--line);padding:2px 8px;background:var(--surface);}
+  .sec-head h2{font-family:var(--display);font-weight:600;font-size:clamp(19px,2.3vw,23px);letter-spacing:-0.01em;margin:0;}
+  .sec-head .hint{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--steel);letter-spacing:0.04em;}
+  .diagram{border:1px solid var(--line);background:var(--surface);padding:8px;overflow-x:auto;}
+  .diagram svg{display:block;min-width:1060px;width:100%;height:auto;}
+  .svg-lane-label{font-family:var(--mono);font-size:11px;letter-spacing:0.13em;fill:var(--steel);}
+  .svg-tech{font-family:var(--mono);font-size:11px;letter-spacing:0.05em;fill:var(--slate-blue);}
+  .svg-title{font-family:var(--display);font-weight:600;font-size:13.5px;fill:var(--ink);}
+  .svg-cap{font-family:var(--body);font-size:11px;fill:var(--steel);font-style:italic;}
+  .svg-sub{font-family:var(--mono);font-size:10px;fill:var(--steel);}
+  .svg-field{font-family:var(--mono);font-size:11px;fill:var(--ink-2);}
+  .svg-group{font-family:var(--mono);font-size:9.5px;letter-spacing:0.1em;fill:var(--steel);}
+  .svg-flag{font-family:var(--mono);font-size:10px;letter-spacing:0.03em;fill:var(--amber-deep);}
+  .svg-flagS{font-family:var(--mono);font-size:10px;letter-spacing:0.03em;fill:var(--slate-blue);}
+  .band{fill:var(--surface-2);stroke:var(--line-soft);}
+  .node{fill:#fff;stroke:var(--ink-2);stroke-width:1;}
+  .node-amber{fill:var(--amber-tint);stroke:var(--amber);stroke-width:1.4;}
+  .node-src{fill:#fff;stroke:var(--slate-blue);stroke-width:1.4;}
+  .node-cfg{fill:#fff;stroke:var(--slate-blue);stroke-width:1.4;stroke-dasharray:4 3;}
+  .node-tbl{fill:var(--surface);stroke:var(--ink-2);stroke-width:1;}
+  .accentbar{fill:var(--amber);} .srcbar{fill:var(--slate-blue);}
+  .flow{stroke:var(--amber);stroke-width:2;fill:none;}
+  .flow-soft{stroke:var(--slate-blue);stroke-width:1.6;fill:none;stroke-dasharray:5 4;}
+  .grid{display:grid;gap:16px;} .g2{grid-template-columns:repeat(2,1fr);} .g3{grid-template-columns:repeat(3,1fr);}
+  .card{border:1px solid var(--line);background:var(--surface);padding:20px;}
+  .card h3{font-family:var(--display);font-weight:600;font-size:16px;margin:0 0 8px;}
+  .card p{margin:0 0 8px;font-size:13.5px;color:var(--ink-2);} .card p:last-child{margin-bottom:0;}
+  .card .k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--steel);margin:0 0 6px;}
+  .callout{border:1px solid var(--amber);background:var(--amber-tint);padding:14px 18px;font-size:13.5px;color:var(--ink);}
+  .callout b{font-weight:600;}
+  .callout.blue{border-color:var(--slate-blue);background:#E9EEF0;}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);font-size:13px;}
+  thead th{background:var(--ink);color:var(--surface);font-family:var(--mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;text-align:left;padding:10px 14px;font-weight:600;}
+  tbody td{padding:10px 14px;border-top:1px solid var(--line-soft);vertical-align:top;color:var(--ink-2);}
+  tbody td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink);white-space:nowrap;}
+  td code{font-family:var(--mono);font-size:12px;color:var(--slate-blue);}
+  tr.grp td{background:var(--surface-2);border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--slate-blue);font-weight:600;padding:9px 14px;}
+  .tg{font-family:var(--mono);font-size:10.5px;letter-spacing:0.02em;padding:2px 7px;white-space:nowrap;display:inline-block;}
+  .tg-s{background:var(--amber-tint);color:var(--amber-deep);border:1px solid var(--amber);}
+  .tg-d{background:var(--surface-2);color:var(--steel);border:1px solid var(--line);}
+  .tg-c{background:var(--green-tint);color:var(--green);border:1px solid var(--green);}
+  .tg-p{background:#EBE4F0;color:#6B4E8A;border:1px solid #6B4E8A;}
+  .svc td:first-child{font-family:var(--display);font-weight:600;color:var(--ink);white-space:normal;}
+  .schema{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .stbl{border:1px solid var(--line);background:var(--surface);}
+  .stbl .sh{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);background:var(--surface-2);padding:10px 14px;border-bottom:1px solid var(--line);}
+  .stbl .sh .sm{font-family:var(--body);font-weight:400;font-style:italic;color:var(--steel);font-size:12px;margin-left:8px;}
+  .stbl table{border:none;} .stbl thead th{background:transparent;color:var(--steel);border-bottom:1px solid var(--line-soft);}
+  .stbl tbody td{font-size:12.5px;} .stbl tbody td:nth-child(2){font-family:var(--mono);font-size:11.5px;color:var(--slate-blue);white-space:nowrap;}
+  .model{border:1px solid var(--line);background:var(--surface);}
+  .mrow{display:grid;grid-template-columns:200px 1fr 150px;gap:18px;align-items:center;padding:14px 20px;border-top:1px solid var(--line-soft);}
+  .mrow:first-child{border-top:none;}
+  .mrow .mt{font-family:var(--display);font-weight:600;font-size:15px;display:flex;align-items:center;gap:10px;}
+  .mrow .mt span{width:8px;height:18px;background:var(--amber);flex:none;} .mrow.alt .mt span{background:var(--slate-blue);}
+  .mrow .md{font-size:13.5px;color:var(--ink-2);} .mrow .ms{font-family:var(--mono);font-size:11.5px;color:var(--slate-blue);text-align:right;}
+  .mnote{padding:13px 20px;background:var(--surface-2);border-top:1px solid var(--line);font-size:13px;color:var(--ink-2);} .mnote b{color:var(--ink);} .mnote + .mnote{border-top:1px solid var(--line-soft);}
+  .road{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .phase{border:1px solid var(--line);background:var(--surface);padding:20px;}
+  .phase.now{border-color:var(--amber);box-shadow:inset 0 3px 0 var(--amber);}
+  .phase .pn{font-family:var(--mono);font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--steel);} .phase.now .pn{color:var(--amber-deep);}
+  .phase h3{font-family:var(--display);font-weight:600;font-size:16px;margin:8px 0 9px;} .phase p{margin:0;font-size:13px;color:var(--ink-2);}
+  .phase .when{display:inline-block;margin-top:12px;font-family:var(--mono);font-size:11px;padding:3px 9px;border:1px solid var(--line);color:var(--steel);} .phase.now .when{background:var(--amber);color:#fff;border-color:var(--amber);}
+  .phase .tools{margin-top:10px;font-family:var(--mono);font-size:10.5px;color:var(--slate-blue);}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--steel);align-items:center;}
+  .foot{margin-top:38px;border-top:1px solid var(--line);padding-top:16px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .stack{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;border:1px solid var(--ink-2);color:var(--ink-2);padding:3px 8px;}
+  .foot .note{font-family:var(--mono);font-size:11px;color:var(--steel);}
+  @media (max-width:860px){.g2,.g3,.road,.schema{grid-template-columns:1fr;}.mrow{grid-template-columns:1fr;gap:5px;}.mrow .ms{text-align:left;}table{display:block;overflow-x:auto;white-space:nowrap;}.stbl table{white-space:normal;}}
+  @media print{body{background:#fff;}.diagram{overflow:visible;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="specbar">
+    <span>ICP Scoring &amp; Accounts System</span>
+    <span class="meta"><span>Architecture &amp; flow</span><span><b>Phase 1 build</b> + Accounts</span><span>June 2026</span></span>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">Find, score and prioritise, then keep clients healthy</p>
+    <h1>One system that scores <span class="lead">prospects</span> and monitors <span class="lead">accounts</span>.</h1>
+    <p>Prospects are chosen by ICP, enriched across Creditsafe and Cognism, classified by sector, scored, reviewed and pulled into contacts on demand. The same records live on as accounts once they convert, carrying firmographic monitoring, client-scored quality, and per-client delivery efficiency from the CRM.</p>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>System architecture</h2><span class="hint">left to right &middot; four layers</span></div>
+    <div class="diagram">
+      <svg viewBox="0 0 1240 730" role="img" aria-label="Architecture diagram">
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#C9791C"/></marker>
+          <marker id="arrowS" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 Z" fill="#3C5A66"/></marker>
+        </defs>
+        <rect class="band" x="56" y="50" width="1124" height="96" rx="3"/>
+        <rect class="band" x="56" y="166" width="1124" height="92" rx="3"/>
+        <rect class="band" x="56" y="280" width="1124" height="100" rx="3"/>
+        <rect class="band" x="56" y="402" width="1124" height="310" rx="3"/>
+        <text class="svg-lane-label" x="-98" y="22" transform="rotate(-90)" text-anchor="middle">INTERFACE</text>
+        <text class="svg-lane-label" x="-212" y="22" transform="rotate(-90)" text-anchor="middle">SERVICES &amp; RULES</text>
+        <text class="svg-lane-label" x="-330" y="22" transform="rotate(-90)" text-anchor="middle">ORCHESTRATION</text>
+        <text class="svg-lane-label" x="-557" y="22" transform="rotate(-90)" text-anchor="middle">DATA STORE</text>
+        <text class="svg-tech" x="1168" y="66" text-anchor="end">Next.js</text>
+        <text class="svg-tech" x="1168" y="182" text-anchor="end">Creditsafe &middot; Cognism &middot; Firecrawl / Exa</text>
+        <text class="svg-tech" x="1168" y="296" text-anchor="end">n8n</text>
+        <text class="svg-tech" x="1168" y="418" text-anchor="end">Supabase &middot; Postgres</text>
+
+        <g><rect class="node" x="76" y="74" width="244" height="50" rx="4"/><text class="svg-title" x="92" y="95">Add / upload + choose ICP</text><text class="svg-sub" x="92" y="113">CSV or manual &middot; batch ICP</text></g>
+        <g><rect class="node" x="470" y="74" width="244" height="50" rx="4"/><text class="svg-title" x="486" y="95">Review &amp; run</text><text class="svg-sub" x="486" y="113">validate &middot; credits &middot; Run</text></g>
+        <g><rect class="node-amber" x="800" y="74" width="336" height="50" rx="4"/><text class="svg-title" x="818" y="95">Triage &rarr; list, detail &amp; contacts</text><text class="svg-sub" x="818" y="113">approve, then work per ICP</text></g>
+
+        <g><rect class="node-src" x="288" y="186" width="172" height="60" rx="4"/><rect class="srcbar" x="288" y="186" width="4" height="60"/><text class="svg-title" x="302" y="207">Creditsafe</text><text class="svg-sub" x="302" y="223">JWT</text><text class="svg-flag" x="302" y="238">report</text></g>
+        <g><rect class="node-src" x="500" y="186" width="172" height="60" rx="4"/><rect class="srcbar" x="500" y="186" width="4" height="60"/><text class="svg-title" x="514" y="207">Cognism</text><text class="svg-sub" x="514" y="223">Bearer</text><text class="svg-flag" x="514" y="238">enrich&rarr;gate&rarr;redeem</text></g>
+        <g><rect class="node-src" x="712" y="186" width="172" height="60" rx="4"/><rect class="srcbar" x="712" y="186" width="4" height="60"/><text class="svg-title" x="726" y="207">Firecrawl / Exa</text><text class="svg-sub" x="726" y="223">crawl + research</text><text class="svg-flag" x="726" y="238">sector inference</text></g>
+        <g><rect class="node-cfg" x="924" y="186" width="200" height="60" rx="4"/><text class="svg-title" x="940" y="207">ICP profiles</text><text class="svg-sub" x="940" y="223">config &middot; shared base</text><text class="svg-flagS" x="940" y="238">+ per-ICP weights &amp; rules</text></g>
+
+        <g><rect class="node" x="76" y="286" width="172" height="58" rx="4"/><rect class="accentbar" x="76" y="286" width="4" height="58"/><text class="svg-title" x="90" y="309">1 &middot; Resolve</text><text class="svg-sub" x="90" y="327">name &rarr; domain</text></g>
+        <g><rect class="node" x="288" y="286" width="172" height="58" rx="4"/><rect class="accentbar" x="288" y="286" width="4" height="58"/><text class="svg-title" x="302" y="309">2 &middot; Creditsafe</text><text class="svg-sub" x="302" y="327">search &rarr; report</text></g>
+        <g><rect class="node" x="500" y="286" width="172" height="58" rx="4"/><rect class="accentbar" x="500" y="286" width="4" height="58"/><text class="svg-title" x="514" y="309">3 &middot; Cognism</text><text class="svg-sub" x="514" y="327">gate &rarr; redeem</text></g>
+        <g><rect class="node" x="712" y="286" width="172" height="58" rx="4"/><rect class="accentbar" x="712" y="286" width="4" height="58"/><text class="svg-title" x="726" y="309">4 &middot; Classify</text><text class="svg-sub" x="726" y="327">sector + sub-sector</text></g>
+        <g><rect class="node" x="924" y="286" width="172" height="58" rx="4"/><rect class="accentbar" x="924" y="286" width="4" height="58"/><text class="svg-title" x="938" y="309">5 &middot; Score</text><text class="svg-sub" x="938" y="327">fit to ICP + flag</text></g>
+
+        <g><rect class="node-tbl" x="76" y="430" width="262" height="250" rx="4"/><rect class="accentbar" x="76" y="430" width="262" height="4"/>
+          <text class="svg-title" x="92" y="452">companies</text><text class="svg-cap" x="92" y="468">the working record</text>
+          <text class="svg-group" x="92" y="490">YOU PROVIDE</text><text class="svg-field" x="92" y="508">company_name &middot; domain &middot; icp</text>
+          <text class="svg-group" x="92" y="532">SYSTEM WRITES</text><text class="svg-field" x="92" y="550">sector &middot; sub_sector &middot; status</text>
+          <text class="svg-field" x="92" y="568">score &middot; tier &middot; confidence</text><text class="svg-field" x="92" y="586">match_flag &middot; lifecycle_status</text>
+          <text class="svg-field" x="92" y="604">enriched_at &middot; last_scored</text></g>
+        <g><rect class="node-tbl" x="500" y="430" width="300" height="150" rx="4"/><rect class="srcbar" x="500" y="430" width="300" height="4"/>
+          <text class="svg-title" x="516" y="452">enrichment_data</text><text class="svg-cap" x="516" y="468">raw responses, kept</text>
+          <text class="svg-field" x="516" y="492">company_id</text><text class="svg-field" x="516" y="510">creditsafe_json &middot; cognism_json</text><text class="svg-field" x="516" y="528">firecrawl_json &middot; exa_json</text>
+          <text class="svg-sub" x="516" y="556">re-run the model with no new spend</text></g>
+        <g><rect class="node-tbl" x="900" y="430" width="236" height="200" rx="4"/><rect class="accentbar" x="900" y="430" width="236" height="4"/>
+          <text class="svg-title" x="916" y="452">scoring_breakdown</text><text class="svg-cap" x="916" y="468">the score, by category</text>
+          <text class="svg-field" x="916" y="492">company_id &middot; icp_profile</text><text class="svg-field" x="916" y="510">icp_fit &middot; scale_footprint</text>
+          <text class="svg-field" x="916" y="528">hiring_growth &middot; financial</text><text class="svg-field" x="916" y="546">completeness</text><text class="svg-field" x="916" y="564">total_score &middot; tier &middot; match_flag</text></g>
+        <text class="svg-sub" x="500" y="650">+ contacts, usage_runs, usage_items, and the account tables &mdash; see section 05</text>
+
+        <path class="flow" d="M150,124 L64,124 L64,520 L76,520" marker-end="url(#arrow)"/><text class="svg-flag" x="18" y="196">insert</text><text class="svg-flag" x="18" y="210">queued</text>
+        <path class="flow" d="M320,99 L470,99" marker-end="url(#arrow)"/><text class="svg-flag" x="360" y="90">queued</text>
+        <path class="flow" d="M520,124 L520,266 L162,266 L162,286" marker-end="url(#arrow)"/><text class="svg-flag" x="300" y="260">Run &middot; one batch</text>
+        <path class="flow" d="M248,315 L288,315" marker-end="url(#arrow)"/><path class="flow" d="M460,315 L500,315" marker-end="url(#arrow)"/><path class="flow" d="M672,315 L712,315" marker-end="url(#arrow)"/><path class="flow" d="M884,315 L924,315" marker-end="url(#arrow)"/>
+        <path class="flow-soft" d="M374,246 L374,286" marker-end="url(#arrowS)"/><path class="flow-soft" d="M586,246 L586,286" marker-end="url(#arrowS)"/><path class="flow-soft" d="M798,246 L798,286" marker-end="url(#arrowS)"/><path class="flow-soft" d="M1010,246 L1010,286" marker-end="url(#arrowS)"/>
+        <path class="flow" d="M560,344 L560,430" marker-end="url(#arrow)"/><path class="flow" d="M640,344 L640,430" marker-end="url(#arrow)"/><text class="svg-flag" x="566" y="392">store raw</text>
+        <path class="flow" d="M1010,344 L1010,430" marker-end="url(#arrow)"/><text class="svg-flag" x="1018" y="392">score</text>
+        <path class="flow" d="M1136,470 L1172,470 L1172,99 L1136,99" marker-end="url(#arrow)"/><text class="svg-flag" x="1150" y="44" text-anchor="end">read &middot; to triage</text>
+        <path class="flow-soft" d="M760,124 L760,166 L586,166 L586,186" marker-end="url(#arrowS)"/><text class="svg-flagS" x="620" y="150">contacts, on demand</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>The flow, start to finish</h2></div>
+    <div class="grid g2">
+      <div class="card"><p class="k">1 &middot; Import</p><p>Choose the ICP for the batch, then upload a CSV or add companies by hand. Rows are queued, nothing runs yet.</p></div>
+      <div class="card"><p class="k">2 &middot; Review &amp; run</p><p>The validation gate checks each company with the free Cognism enrich call and skips those below a minimum-data threshold. The screen shows ready, to pull and skipped, with the credit estimate, then you press Run.</p></div>
+      <div class="card"><p class="k">3 &middot; Enrich &amp; classify</p><p>One throttled batch: Creditsafe and Cognism enrich, Firecrawl and Exa infer the sector. Where the entity match is ambiguous, the company pauses into triage for the user to pick the right company. Each company is then scored against the chosen ICP, and the score is kept as history.</p></div>
+      <div class="card"><p class="k">4 &middot; Triage</p><p>Companies land in a holding area, not straight on the list. Confirm the entity where ambiguous, approve the proposed sector, and clear low-confidence or no-match flags before anything reaches the list.</p></div>
+      <div class="card"><p class="k">5 &middot; Work the list</p><p>Approved companies sit on the per-ICP target list. Open one for the full record, or pull its buyer contacts on demand.</p></div>
+      <div class="card"><p class="k">Notification centre</p><p>Enrichment issues surface here: failed pulls, low data confidence, no-match flags, and contacts returned with mid or low email quality after a bulk pull.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>The services, at the call level</h2></div>
+    <table class="svc">
+      <thead><tr><th>Step</th><th>Auth</th><th>Call</th><th>Returns</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td>Cognism, check</td><td><code>Bearer</code></td><td><code>POST /account/enrich</code></td><td>Presence flags only, drives the validation gate</td><td>Free</td></tr>
+        <tr><td>Cognism, pull</td><td><code>Bearer</code></td><td><code>POST /account/redeem</code></td><td>Full account: firmographics, revenue, headcount, locations, hiring / funding / acquisition / IPO events</td><td>Worst case 1 credit / company, to confirm</td></tr>
+        <tr><td>Cognism, contacts</td><td><code>Bearer</code></td><td><code>POST /contact/search</code> &rarr; <code>/redeem</code></td><td>Search lists names, titles, seniority free. Redeem reveals email (with quality grade) and phone.</td><td>1 credit / redeemed contact</td></tr>
+        <tr><td>Creditsafe</td><td><code>JWT</code></td><td><code>GET /companies/{id}</code></td><td>Revenue where filed, ownership and parent tree, credit and risk score, locations</td><td>Per report</td></tr>
+        <tr><td>Firecrawl</td><td>key</td><td>crawl site</td><td>Company site content: products, about, careers, addresses, for sector inference</td><td>Per crawl</td></tr>
+        <tr><td>Exa</td><td>key</td><td>neural search</td><td>Third-party and news context to corroborate the sector and, later, feed signals</td><td>Per search</td></tr>
+      </tbody>
+    </table>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card"><h3>Classification into triage</h3><p>Firecrawl reads the company's own site as the ground truth for what they make; Exa corroborates and adds breadth. An LLM maps the result to your preset sector and sub-sector list against fixed rules, with a confidence score. Anything unclear drops to triage for a human, so the model proposes and a person approves.</p></div>
+      <div class="card"><h3>Waterfall email enrichment</h3><p>When a contact email is missing, n8n chains fallbacks: syntax match from known company emails, then a provider such as Apollo or Prospeo, still writing back into the contact. Cognism's own email quality grade is shown beside each email, sortable and filterable. A verification layer is parked unless bounce rates demand it.</p></div>
+    </div>
+    <div class="callout blue" style="margin-top:16px"><b>Estimated in credits, not pounds.</b> Neither Cognism nor Creditsafe exposes a balance or a knowable per-item cost, so these show in native units only: companies, Creditsafe reports and Cognism credits, no pound figure. Firecrawl, Exa and the LLM have transparent per-call pricing, so their actual cost is tracked in pounds. The app meters what it spends; that same metering enforces the spend ceilings.</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>Every datapoint, its source and where it goes</h2><span class="hint">field &middot; source &middot; use</span></div>
+    <table>
+      <thead><tr><th>Field</th><th>What it tells us</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="3">Inputs</td></tr>
+        <tr><td>domain</td><td>Mandatory match key</td><td><span class="tg tg-c">input key</span></td></tr>
+        <tr><td>company_name</td><td>Typed, then normalised to Cognism's canonical name</td><td><span class="tg tg-c">input + normalised</span></td></tr>
+        <tr><td>icp</td><td>Chosen for the batch, sets the scoring profile</td><td><span class="tg tg-c">input</span></td></tr>
+        <tr class="grp"><td colspan="3">Cognism account &middot; POST /account/redeem</td></tr>
+        <tr><td>linkedinUrl</td><td>Company LinkedIn</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr><td>description, shortDescription</td><td>What the company does, its own words</td><td><span class="tg tg-c">sector</span> <span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>industry, sic, naics, isic</td><td>Industry labels and codes</td><td><span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>revenue</td><td>Revenue, USD (Creditsafe actual takes priority)</td><td><span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>headcount</td><td>Employee count (range only if missing)</td><td><span class="tg tg-s">scale &amp; footprint</span></td></tr>
+        <tr><td>type</td><td>Public, private, etc</td><td><span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>location[] hq / other</td><td>Head office, and other sites counted separately</td><td><span class="tg tg-s">ICP fit</span> <span class="tg tg-s">scale &amp; footprint</span></td></tr>
+        <tr><td>hiring, funding, acquisition, IPO events</td><td>Demand and growth signals</td><td><span class="tg tg-s">hiring &amp; growth</span></td></tr>
+        <tr><td>phone numbers</td><td>Switchboard</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr class="grp"><td colspan="3">Cognism contacts &middot; POST /contact/redeem &middot; on demand</td></tr>
+        <tr><td>fullName, jobTitle, seniority</td><td>The person, role and level (listed free)</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr><td>email (address + quality), phones, linkedinUrl</td><td>Revealed on redeem; quality grade shown beside email</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr class="grp"><td colspan="3">Creditsafe &middot; GET /companies/{id}</td></tr>
+        <tr><td>company number</td><td>Registered number, for CRM match</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr><td>revenue, turnover</td><td>Filed actual revenue where available, USD</td><td><span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>credit score, risk score</td><td>Creditworthiness and overall risk</td><td><span class="tg tg-s">financial viability</span></td></tr>
+        <tr><td>payment behaviour, adverse events</td><td>Already inside the risk score</td><td><span class="tg tg-d">data only</span></td></tr>
+        <tr><td>legal form, ownership type, parent, subsidiaries</td><td>Ownership and US presence via subsidiaries</td><td><span class="tg tg-s">ICP fit</span></td></tr>
+        <tr><td>number of locations</td><td>Registered sites</td><td><span class="tg tg-s">scale &amp; footprint</span></td></tr>
+        <tr class="grp"><td colspan="3">Firecrawl / Exa &middot; classification</td></tr>
+        <tr><td>sector, sub_sector</td><td>Inferred from the site and web context, approved in triage</td><td><span class="tg tg-c">classification</span></td></tr>
+      </tbody>
+    </table>
+    <div class="legend">
+      <span><span class="tg tg-s">scored</span> feeds a category</span>
+      <span><span class="tg tg-d">data only</span> stored and shown</span>
+      <span><span class="tg tg-c">input / classification</span> sets ICP or sector</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Database schema</h2><span class="hint">Supabase / Postgres</span></div>
+    <div class="schema">
+      <div class="stbl"><div class="sh">companies <span class="sm">prospect, then account</span></div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>id</td><td>uuid</td><td>PK</td></tr><tr><td>company_name</td><td>text</td><td>normalised</td></tr><tr><td>domain</td><td>text</td><td>required, unique</td></tr>
+        <tr><td>icp</td><td>enum</td><td>chosen at import</td></tr><tr><td>sector, sub_sector</td><td>text</td><td>classified</td></tr><tr><td>classification_confidence</td><td>int</td><td>from the classifier</td></tr>
+        <tr><td>status</td><td>enum</td><td>queued / enriching / triage / scored / failed</td></tr><tr><td>lifecycle_status</td><td>enum</td><td>prospect / exported / client</td></tr>
+        <tr><td>score, tier, confidence</td><td>int / enum</td><td>latest score</td></tr><tr><td>match_flag</td><td>enum</td><td>match / weak / no_match</td></tr>
+        <tr><td>company_number, linkedin_url</td><td>text</td><td>neutral</td></tr><tr><td>hq_country/state/city</td><td>text</td><td>head office</td></tr><tr><td>site_count</td><td>int</td><td>other sites</td></tr>
+        <tr><td>enriched_at, exported_at, last_scored</td><td>timestamptz</td><td>lifecycle dates</td></tr>
+      </tbody></table></div>
+      <div class="stbl"><div class="sh">contacts <span class="sm">one row per person</span></div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>id</td><td>uuid</td><td>PK</td></tr><tr><td>company_id</td><td>uuid</td><td>FK</td></tr><tr><td>full_name, job_title, seniority</td><td>text</td><td>listed free</td></tr>
+        <tr><td>management_level, job_function</td><td>text</td><td></td></tr><tr><td>linkedin_url</td><td>text</td><td></td></tr>
+        <tr><td>email, email_quality</td><td>text</td><td>on redeem</td></tr><tr><td>direct_dial, mobile</td><td>text</td><td>on redeem</td></tr>
+        <tr><td>email_source, phone_source</td><td>enum</td><td>cognism / syntax_match / apollo / prospeo</td></tr>
+        <tr><td>redeem_id</td><td>text</td><td>prevents re-charge</td></tr><tr><td>status</td><td>enum</td><td>listed / redeemed</td></tr><tr><td>pulled_at</td><td>timestamptz</td><td>null until redeemed</td></tr>
+      </tbody></table></div>
+      <div class="stbl"><div class="sh">enrichment_data</div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>id</td><td>uuid</td><td>PK</td></tr><tr><td>company_id</td><td>uuid</td><td>FK</td></tr>
+        <tr><td>creditsafe_json, cognism_json</td><td>jsonb</td><td>raw</td></tr><tr><td>firecrawl_json, exa_json</td><td>jsonb</td><td>raw</td></tr><tr><td>created_at</td><td>timestamptz</td><td></td></tr>
+      </tbody></table></div>
+      <div class="stbl"><div class="sh">scoring_breakdown</div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>id, company_id</td><td>uuid</td><td>PK, FK</td></tr><tr><td>icp_profile</td><td>enum</td><td>scored against</td></tr>
+        <tr><td>icp_fit, scale_footprint</td><td>int</td><td>category</td></tr><tr><td>hiring_growth, financial</td><td>int</td><td>category</td></tr><tr><td>completeness</td><td>int</td><td>confidence</td></tr>
+        <tr><td>total_score, tier, match_flag</td><td>int / enum</td><td></td></tr><tr><td>scored_at</td><td>timestamptz</td><td></td></tr>
+      </tbody></table></div>
+      <div class="stbl"><div class="sh">usage_runs / usage_items <span class="sm">audit</span></div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>run: id, run_type, icp, run_by</td><td>—</td><td>enrichment / contact_pull</td></tr><tr><td>run: companies, reports</td><td>int</td><td>totals</td></tr>
+        <tr><td>run: account_credits, contact_credits</td><td>int</td><td>Cognism split</td></tr><tr><td>run: started_at</td><td>timestamptz</td><td></td></tr>
+        <tr><td>item: run_id, company_id, contact_id</td><td>uuid</td><td>line item</td></tr><tr><td>item: action, credits, created_at</td><td>—</td><td>per action</td></tr>
+      </tbody></table></div>
+      <div class="stbl"><div class="sh">account tables <span class="sm">clients only</span></div><table><thead><tr><th>Field</th><th>Type</th><th>Note</th></tr></thead><tbody>
+        <tr><td>account_qualitative</td><td>—</td><td>company_id, metric, rating 1-5, rated_by, rated_at, refresh_due</td></tr>
+        <tr><td>account_metrics</td><td>—</td><td>company_id, metric, value, period, source, pulled_at <span class="tg tg-p">Loxo, pending</span></td></tr>
+        <tr><td>account_monitoring</td><td>—</td><td>company_id, event_type, detail, detected_at</td></tr>
+        <tr><td>talent_insights</td><td>—</td><td>company_id, headcount_change, attrition, avg_tenure, entered_by, entered_at</td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Config: the ICP profiles and models</h3><p>Weights, bands and tier thresholds sit in config, not code. A shared base holds the categories, the USD bands and the confidence rule; each ICP layers its own weights and fit rules. The account health model lives here too, on the same pattern.</p></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2>How prospects are scored</h2><span class="hint">fit to the chosen ICP</span></div>
+    <div class="model">
+      <div class="mrow"><div class="mt"><span></span>ICP fit</div><div class="md">US presence, ownership and parentage, product or service type, industry and revenue band, against the chosen ICP's rules.</div><div class="ms">Creditsafe + Cognism</div></div>
+      <div class="mrow alt"><div class="mt"><span></span>Scale &amp; footprint</div><div class="md">Headcount band and number of sites, peaking at mid-market.</div><div class="ms">Creditsafe + Cognism</div></div>
+      <div class="mrow"><div class="mt"><span></span>Hiring &amp; growth</div><div class="md">Open roles, hiring, funding and acquisitions.</div><div class="ms">Cognism</div></div>
+      <div class="mrow alt"><div class="mt"><span></span>Financial viability</div><div class="md">Credit and risk score.</div><div class="ms">Creditsafe</div></div>
+      <div class="mrow"><div class="mt"><span></span>Data confidence</div><div class="md">How complete the picture was, shown beside the score.</div><div class="ms">Indicator</div></div>
+      <div class="mnote"><b>Four scored categories plus confidence.</b> Buyer contact coverage is not scored, as it reflects data coverage not account quality. The ICP is chosen at import; a company that contradicts its batch's rules is flagged as no-match. Weights are per ICP, in config.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><h2>What the team sees</h2><span class="hint">the pages</span></div>
+    <div class="grid g3">
+      <div class="card"><p class="k">Home</p><h3>AI insights</h3><p>A do-this-next page: what needs attention, the last run in a line, and where to push, thin or weak-scoring ICPs and sectors. The AI narrates from the stored data, it does not invent it.</p></div>
+      <div class="card"><p class="k">Prospects</p><h3>Target list, per ICP</h3><p>Tabbed by ICP with the per-category breakdown on the row, sortable and filterable, sector shown. An exported status marks what has moved to the CRM, with archiving of old records.</p></div>
+      <div class="card"><p class="k">Prospects</p><h3>Triage</h3><p>The companies-only approval gate between a run and the list. Confirm the entity where the match is ambiguous, approve the proposed sector, resolve low-confidence and no-match flags, before anything lands.</p></div>
+      <div class="card"><p class="k">Prospects</p><h3>Contacts</h3><p>Grouped by company, groups sortable by score and tier. Names and titles free, select or select-all, bulk enrich to reveal email and phone. Each detail shows its source and email quality; weak or missing results are flagged in notifications, not triage.</p></div>
+      <div class="card"><p class="k">Oversight</p><h3>Usage &amp; audit</h3><p>Credits spent, split by account redeem, contact redeem and Creditsafe. A log grouped by run, expandable to line items.</p></div>
+      <div class="card"><p class="k">Oversight</p><h3>Analytics</h3><p>Per-user and per-period activity, CSVs, companies and contacts, by sector, on trend charts. Real Microsoft logins make the per-user view accurate.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><h2>Accounts</h2><span class="hint">active clients</span></div>
+    <div class="callout" style="margin-bottom:16px"><b>Optional module, same entity later stage.</b> Accounts can be built now or deferred to a later evolution. An account is a company that converted, so it is a filtered view with client-only fields and its own health model, not a separate system. The lifecycle fields and account tables are cheap to keep in the schema now even if the module waits. It runs as a second n8n automation.</div>
+    <div class="grid g2">
+      <div class="card"><h3>Build now, no new dependency</h3>
+        <p><b>Firmographic &amp; adverse monitoring.</b> Reuses the Creditsafe and Cognism pipeline. Creditsafe live monitoring pushes adverse legal or financial events into the notification centre; else a scheduled re-pull and diff.</p>
+        <p><b>Qualitative ratings.</b> Client-scored 1 to 5: quality of feedback, speed of feedback, attractiveness to sell. Manual, with a periodic refresh reminder.</p>
+        <p><b>Talent Insights.</b> Headcount change, attrition, average tenure. No API, so manual entry with a refresh reminder.</p>
+        <p><b>Health model.</b> Combines the above with the efficiency pillar, weighted in config, same shape as the ICP scoring.</p>
+      </div>
+      <div class="card"><h3>Efficiency pillar <span class="tg tg-p">Loxo, pending live key</span></h3>
+        <p>Per-client delivery efficiency, reconstructed from Loxo jobs, candidates and placements and joined by company:</p>
+        <p style="font-family:var(--mono);font-size:12px;color:var(--ink-2)">average fee &middot; CV&rarr;1st interview &middot; 1st interview&rarr;offer &middot; offer&rarr;placement &middot; job fill rate &middot; time to hire</p>
+        <p><b>Effort versus return.</b> Fee per CV sent is the headline, revenue per unit of effort. Time to hire shows both raw and as a throughput-adjusted fee, so a fast fill beats a slow one of similar value.</p>
+        <p>Definitions and schema are set now; the fields are confirmed on a live Loxo key before this pillar goes live.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">09</span><h2>Access, security &amp; controls</h2><span class="hint">how it is kept safe</span></div>
+    <div class="grid g3">
+      <div class="card"><p class="k">Access</p><h3>Roles</h3><p>Two roles, admin and standard, enforced by row-level security. Shared: the target and account lists. User-specific: triage, the home page, and a user's own analytics and usage. Admin only: config, and the overall and per-user analytics and usage.</p></div>
+      <div class="card"><p class="k">Throughput</p><h3>Queueing</h3><p>The queue lives in Postgres, drained to n8n in chunks at a bounded concurrency, resumable across executions, so a base-tier n8n plan is not overrun. Redis is not needed at these volumes.</p></div>
+      <div class="card"><p class="k">Cost</p><h3>Runaway control</h3><p>A batch size cap, per-run and per-day spend ceilings checked before each paid call, idempotency so retries cannot re-charge, bounded retries, and LLM guards: a cheap pinned model, a token cap, one attempt, a monthly cap. The metering that shows spend also enforces it.</p></div>
+      <div class="card"><p class="k">Security</p><h3>Secrets &amp; breach</h3><p>Keys server-side only, never in the codebase or its git history. Row-level security, and login locked to the Lignum tenant. Scraped content is untrusted: the classifier is confined to schema-locked output so a crafted page cannot hijack it. The n8n webhook is secured to the app.</p></div>
+      <div class="card"><p class="k">Data</p><h3>Personal data</h3><p>Contact data is Lignum's, under their existing agreements and policy. The app keeps it out of plaintext logs, behind the access model, and supports deleting a contact on request.</p></div>
+      <div class="card"><p class="k">Delivery</p><h3>Build practices</h3><p>Separate dev, staging and production with fixtures so building never spends live credits. Structured logging and an error tracker, with alerts when a ceiling trips or a run fails. Scoring-engine unit tests. A handover runbook and a warranty window.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">10</span><h2>Roadmap &amp; open dependencies</h2></div>
+    <div class="road">
+      <div class="phase now"><div class="pn">Core build</div><h3>The prospect engine</h3><p>ICP scoring end to end: import, enrich, classify, score, triage, target list, contacts, and the oversight views.</p><span class="when">In build now</span><div class="tools">Next.js &middot; n8n &middot; Supabase &middot; Firecrawl / Exa</div></div>
+      <div class="phase"><div class="pn">Optional</div><h3>Accounts module</h3><p>Build now or defer: lifecycle monitoring, qualitative scoring and the health model. Plus later, signals and auto-ICP.</p><span class="when">Now or later</span><div class="tools">Trigify</div></div>
+      <div class="phase"><div class="pn">Later</div><h3>Loxo &amp; mapping</h3><p>Live Loxo efficiency metrics, auto-routing into campaigns, and full market mapping via in-platform Cognism search.</p><span class="when">Later</span><div class="tools">Loxo &middot; webhooks</div></div>
+    </div>
+    <div class="callout" style="margin-top:16px"><b>Open dependencies, held honestly.</b> Whether a Cognism account redeem draws a credit (worst case assumed). Whether a Cognism CSV export carries the event arrays (would let the CSV path skip the account call). And the three Loxo fields, candidate stage, placement fee and date, and a company link, confirmed on a live key before the efficiency pillar is costed.</div>
+  </section>
+
+  <div class="foot">
+    <div class="stack"><span class="chip">Next.js</span><span class="chip">n8n</span><span class="chip">Supabase</span><span class="chip">Creditsafe</span><span class="chip">Cognism</span><span class="chip">Firecrawl / Exa</span><span class="chip">Loxo</span></div>
+    <div class="note">Core prospect engine &middot; Accounts optional &middot; USD &middot; credits-based estimates &middot; Loxo pillar pending live key</div>
+  </div>
+
+</div>
+</body>
+</html>
