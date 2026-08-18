@@ -7,7 +7,6 @@ import {
   SourcedField,
   UsageRun,
   UsageItem,
-  NotificationItem,
   IcpProfile,
   Tier,
   MatchFlag,
@@ -183,7 +182,7 @@ function generateCompany(index: number): Company {
       triageReason = "entity_ambiguous";
       candidateEntities = makeCandidateEntities(name, domain);
       oneLineReason = "Multiple candidate entities matched — confirm the correct company before the run continues.";
-    } else if (reasonRoll < 0.85) {
+    } else {
       triageReason = "low_confidence_sector";
       proposedSector = sectorDef.sector;
       proposedSubSector = subSector;
@@ -195,18 +194,6 @@ function generateCompany(index: number): Company {
       tier = tierFromScore(total);
       matchFlag = matchFlagFromScore(total);
       oneLineReason = `Classifier proposed ${sectorDef.sector} / ${subSector} at ${classificationConfidence}% confidence — below the approval threshold.`;
-    } else {
-      triageReason = "icp_no_match";
-      proposedSector = sectorDef.sector;
-      proposedSubSector = subSector;
-      classificationConfidence = randInt(rng, 70, 92);
-      const { breakdown: b, total, confidence: conf } = buildScoringBreakdown(icp, 0.3);
-      breakdown = b;
-      score = total;
-      confidence = conf;
-      tier = tierFromScore(total);
-      matchFlag = "no_match";
-      oneLineReason = `Scores against ${icp.name} but contradicts the batch ICP's fit rules.`;
     }
   } else if (status === "scored") {
     proposedSector = sectorDef.sector;
@@ -335,53 +322,6 @@ function generateUsageRuns(): UsageRun[] {
 
 export const USAGE_RUNS: UsageRun[] = generateUsageRuns();
 export const USAGE_ITEMS: UsageItem[] = USAGE_RUNS.flatMap((r) => r.items);
-
-function generateNotifications(): NotificationItem[] {
-  const items: NotificationItem[] = [];
-  COMPANIES.filter((c) => c.status === "failed").forEach((c, i) => {
-    items.push({
-      id: `notif-fail-${i}`,
-      type: "failed_enrichment",
-      message: `${c.name} failed to enrich: ${c.oneLineReason}`,
-      companyId: c.id,
-      createdAt: c.importedAt,
-      read: rng() < 0.4,
-    });
-  });
-  COMPANIES.filter((c) => c.triageReason === "low_confidence_sector").forEach((c, i) => {
-    items.push({
-      id: `notif-lowconf-${i}`,
-      type: "low_confidence",
-      message: `${c.name} classified with low confidence (${c.classificationConfidence}%) — needs review.`,
-      companyId: c.id,
-      createdAt: c.lastEnrichedAt ?? c.importedAt,
-      read: rng() < 0.4,
-    });
-  });
-  COMPANIES.filter((c) => c.matchFlag === "no_match").forEach((c, i) => {
-    items.push({
-      id: `notif-nomatch-${i}`,
-      type: "no_match",
-      message: `${c.name} scored a no-match against ${c.icp}.`,
-      companyId: c.id,
-      createdAt: c.lastEnrichedAt ?? c.importedAt,
-      read: rng() < 0.5,
-    });
-  });
-  CONTACTS.filter((ct) => ct.emailQuality === "low" || ct.emailQuality === "medium").forEach((ct, i) => {
-    items.push({
-      id: `notif-email-${i}`,
-      type: "low_email_quality",
-      message: `${ct.name}'s email came back ${ct.emailQuality} quality after redeem.`,
-      companyId: ct.companyId,
-      createdAt: randomPastDate(rng, 90, 0),
-      read: rng() < 0.5,
-    });
-  });
-  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 40);
-}
-
-export const NOTIFICATIONS: NotificationItem[] = generateNotifications();
 
 const ADVERSE_EVENT_TYPES = [
   { type: "County court judgment", severity: "high" as const },

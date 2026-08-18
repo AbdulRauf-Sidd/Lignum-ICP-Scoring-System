@@ -12,7 +12,7 @@ export function SidebarNav({
   counts,
   onNavigate,
 }: {
-  counts: Partial<Record<"triage" | "notifications", number>>;
+  counts: Partial<Record<"triage", number>>;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -47,7 +47,10 @@ export function SidebarNav({
                   {!!count && (
                     <Badge
                       variant={active ? "secondary" : "outline"}
-                      className="h-5 min-w-5 justify-center px-1 text-[11px]"
+                      className={cn(
+                        "h-5 min-w-5 justify-center px-1 text-[11px]",
+                        !active && "border-sidebar-border text-sidebar-foreground",
+                      )}
                     >
                       {count}
                     </Badge>

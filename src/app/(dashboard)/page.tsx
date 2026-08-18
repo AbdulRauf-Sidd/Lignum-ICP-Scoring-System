@@ -5,22 +5,20 @@ import {
   GitMerge,
   HelpCircle,
   Users,
-  Bell,
+  XCircle,
   Clock,
   TrendingDown,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getHomeStats, getLastRun, getWeakSectors, getRecentActivity } from "@/lib/mock/derived";
+import { getHomeStats, getLastRun, getRecentActivity } from "@/lib/mock/derived";
 import { formatRelativeTime, formatDateTime } from "@/lib/format";
 import { CURRENT_USER } from "@/lib/constants";
 
 export default function HomePage() {
   const stats = getHomeStats();
   const lastRun = getLastRun();
-  const weakSectors = getWeakSectors();
   const activity = getRecentActivity();
 
   const actionItems = [
@@ -45,13 +43,6 @@ export default function HomePage() {
       detail: "Select and bulk-enrich to reveal email and phone.",
       href: "/contacts",
     },
-    stats.unreadNotificationsCount > 0 && {
-      icon: Bell,
-      count: stats.unreadNotificationsCount,
-      label: "unread notifications",
-      detail: "Failed enrichments, no-match flags and weak email quality.",
-      href: "/usage",
-    },
   ].filter(Boolean) as { icon: typeof GitMerge; count: number; label: string; detail: string; href: string }[];
 
   return (
@@ -65,7 +56,7 @@ export default function HomePage() {
         <StatCard icon={ListChecks} label="Awaiting triage" value={stats.triageCount} href="/triage" />
         <StatCard icon={TrendingDown} label="Scored this week" value={stats.scoredThisWeekCount} href="/target-list" />
         <StatCard icon={Users} label="Contacts to redeem" value={stats.pendingContactsCount} href="/contacts" />
-        <StatCard icon={Bell} label="Unread notifications" value={stats.unreadNotificationsCount} href="/usage" />
+        <StatCard icon={XCircle} label="Failed enrichments" value={stats.failedCount} href="/import" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -123,10 +114,6 @@ export default function HomePage() {
                   <span className="text-muted-foreground">Companies</span>
                   <span className="font-medium">{lastRun.companyCount}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Line items</span>
-                  <span className="font-medium">{lastRun.items.length}</span>
-                </div>
                 <Button variant="outline" size="sm" className="mt-2" asChild>
                   <Link href="/usage">View usage log</Link>
                 </Button>
@@ -138,8 +125,8 @@ export default function HomePage() {
         </Card>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="mt-6">
+        <Card>
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>
           </CardHeader>
@@ -155,28 +142,6 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Thin or weak sectors</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {weakSectors.length === 0 && (
-              <p className="text-sm text-muted-foreground">All sectors are performing within range.</p>
-            )}
-            {weakSectors.map((s) => (
-              <div key={s.sector} className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{s.sector}</p>
-                  <p className="text-xs text-muted-foreground">{s.scoredCount} scored companies</p>
-                </div>
-                <Badge variant="outline" className="border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  avg {s.avgScore}
-                </Badge>
-              </div>
-            ))}
           </CardContent>
         </Card>
       </div>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { GitMerge, HelpCircle, AlertTriangle, Check, X, MapPin, Globe } from "lucide-react";
+import { GitMerge, HelpCircle, Check, X, MapPin, Globe } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,11 +41,6 @@ const REASON_META: Record<
     icon: HelpCircle,
     description: "The classifier's confidence fell below the approval threshold.",
   },
-  icp_no_match: {
-    label: "ICP no-match",
-    icon: AlertTriangle,
-    description: "Scored, but contradicts this batch's ICP fit rules.",
-  },
 };
 
 export function TriageWorkspace() {
@@ -71,7 +66,6 @@ export function TriageWorkspace() {
     all: items.length,
     entity_ambiguous: items.filter((c) => c.triageReason === "entity_ambiguous").length,
     low_confidence_sector: items.filter((c) => c.triageReason === "low_confidence_sector").length,
-    icp_no_match: items.filter((c) => c.triageReason === "icp_no_match").length,
   };
 
   const selected = items.find((c) => c.id === effectiveSelectedId) ?? null;
@@ -114,7 +108,6 @@ export function TriageWorkspace() {
           <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
           <TabsTrigger value="entity_ambiguous">Entity ambiguous ({counts.entity_ambiguous})</TabsTrigger>
           <TabsTrigger value="low_confidence_sector">Low-confidence sector ({counts.low_confidence_sector})</TabsTrigger>
-          <TabsTrigger value="icp_no_match">ICP no-match ({counts.icp_no_match})</TabsTrigger>
         </TabsList>
       </Tabs>
 

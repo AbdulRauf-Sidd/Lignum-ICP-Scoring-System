@@ -65,32 +65,22 @@ export function ScoreBar({ label, subScore, weight, contribution, excluded }: {
   excluded: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">
-          {excluded ? (
-            <span className="italic">excluded — no data</span>
-          ) : (
-            <>
-              {subScore}
-              <span className="text-xs"> / 100</span>
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              weight {weight}%
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              <span className="font-medium text-foreground">+{contribution}</span>
-            </>
-          )}
-        </span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        {!excluded && (
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${subScore}%` }}
-          />
+    <div className="flex items-baseline justify-between text-sm">
+      <span className="font-medium">{label}</span>
+      <span className="text-muted-foreground">
+        {excluded ? (
+          <span className="italic">excluded — no data</span>
+        ) : (
+          <>
+            {subScore}
+            <span className="text-xs"> / 100</span>
+            <span className="mx-1.5 text-muted-foreground/40">·</span>
+            weight {weight}%
+            <span className="mx-1.5 text-muted-foreground/40">·</span>
+            <span className="font-medium text-foreground">+{contribution}</span>
+          </>
         )}
-      </div>
+      </span>
     </div>
   );
 }

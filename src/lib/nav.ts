@@ -16,7 +16,7 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   group: "Prospecting" | "Oversight" | "Accounts" | "Admin";
-  badgeKey?: "triage" | "notifications";
+  badgeKey?: "triage";
 }
 
 export const NAV_ITEMS: NavItem[] = [

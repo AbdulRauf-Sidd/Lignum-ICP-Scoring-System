@@ -1,4 +1,4 @@
-import { COMPANIES, CONTACTS, USAGE_RUNS, NOTIFICATIONS, ICP_PROFILES } from "./data";
+import { COMPANIES, CONTACTS, USAGE_RUNS, ICP_PROFILES } from "./data";
 import { SECTORS } from "@/lib/constants";
 
 const TODAY = new Date("2026-08-12T12:00:00Z").getTime();
@@ -13,17 +13,14 @@ export function getHomeStats() {
   const triageCompanies = COMPANIES.filter((c) => c.status === "triage");
   const scoredThisWeek = COMPANIES.filter((c) => c.status === "scored" && withinDays(c.lastEnrichedAt, 7));
   const pendingContacts = CONTACTS.filter((c) => c.status === "listed");
-  const unreadNotifications = NOTIFICATIONS.filter((n) => !n.read);
   const failedThisWeek = COMPANIES.filter((c) => c.status === "failed" && withinDays(c.importedAt, 14));
 
   return {
     triageCount: triageCompanies.length,
     entityAmbiguousCount: triageCompanies.filter((c) => c.triageReason === "entity_ambiguous").length,
     lowConfidenceCount: triageCompanies.filter((c) => c.triageReason === "low_confidence_sector").length,
-    icpNoMatchCount: triageCompanies.filter((c) => c.triageReason === "icp_no_match").length,
     scoredThisWeekCount: scoredThisWeek.length,
     pendingContactsCount: pendingContacts.length,
-    unreadNotificationsCount: unreadNotifications.length,
     failedCount: failedThisWeek.length,
   };
 }
@@ -60,12 +57,6 @@ export function getSectorPerformance(): SectorPerformance[] {
       tierACount: scored.filter((c) => c.tier === "A").length,
     };
   });
-}
-
-export function getWeakSectors(): SectorPerformance[] {
-  return getSectorPerformance()
-    .filter((s) => s.scoredCount > 0 && (s.avgScore ?? 100) < 65)
-    .sort((a, b) => (a.avgScore ?? 0) - (b.avgScore ?? 0));
 }
 
 export function getUsageSummary() {

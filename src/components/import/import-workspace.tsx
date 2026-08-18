@@ -433,7 +433,6 @@ export function ImportWorkspace() {
                 <TableRow>
                   <TableHead>Company</TableHead>
                   <TableHead>Sector</TableHead>
-                  <TableHead>ICP</TableHead>
                   <TableHead>Imported by</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -443,7 +442,6 @@ export function ImportWorkspace() {
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-muted-foreground">{c.sector}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.icp}</TableCell>
                     <TableCell className="text-muted-foreground">{c.importedBy}</TableCell>
                     <TableCell>
                       <StatusBadge status={c.status} />

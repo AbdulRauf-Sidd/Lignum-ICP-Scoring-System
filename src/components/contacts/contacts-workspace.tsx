@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, Phone, Sparkles, X } from "lucide-react";
+import { Mail, Phone, Sparkles, X, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,10 +32,18 @@ function randomEmailQuality(): EmailQuality {
   return "low";
 }
 
-const EMAIL_QUALITY_STYLES: Record<NonNullable<EmailQuality>, string> = {
-  high: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  low: "bg-destructive/10 text-destructive",
+const CONTACT_STATUS_STYLES: Record<Contact["status"], string> = {
+  listed: "bg-muted text-muted-foreground",
+  in_process: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  redeemed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  failed: "bg-destructive/10 text-destructive",
+};
+
+const CONTACT_STATUS_LABELS: Record<Contact["status"], string> = {
+  listed: "Listed",
+  in_process: "In process",
+  redeemed: "Redeemed",
+  failed: "Failed",
 };
 
 const scoredCompanies = COMPANIES.filter((c) => c.status === "scored");
@@ -94,29 +102,38 @@ export function ContactsWorkspace() {
   function bulkEnrich() {
     if (selected.size === 0) return;
     const domainOf = (companyId: string) => COMPANIES.find((c) => c.id === companyId)?.domain ?? "example.com";
+    const ids = Array.from(selected);
 
-    setContacts((prev) =>
-      prev.map((c) => {
-        if (!selected.has(c.id) || c.status === "redeemed") return c;
-        const [first, last] = c.name.split(" ");
-        return {
-          ...c,
-          status: "redeemed" as const,
-          email: `${first.toLowerCase()}.${(last ?? "").toLowerCase()}@${domainOf(c.companyId)}`,
-          emailSource: SOURCES[Math.floor(Math.random() * SOURCES.length)],
-          emailQuality: randomEmailQuality(),
-          phone:
-            Math.random() < 0.7
-              ? `+1 ${Math.floor(200 + Math.random() * 700)}-${Math.floor(200 + Math.random() * 700)}-${Math.floor(1000 + Math.random() * 9000)}`
-              : null,
-          phoneSource: Math.random() < 0.7 ? SOURCES[Math.floor(Math.random() * SOURCES.length)] : null,
-        };
-      }),
-    );
-    toast.success(`Redeemed ${selected.size} contact${selected.size === 1 ? "" : "s"}`, {
-      description: "Email and phone revealed. Already-redeemed contacts are never re-charged.",
+    setContacts((prev) => prev.map((c) => (selected.has(c.id) ? { ...c, status: "in_process" as const } : c)));
+    toast(`Enriching ${ids.length} contact${ids.length === 1 ? "" : "s"}`, {
+      description: "In process — these can't be re-selected until they resolve.",
     });
     setSelected(new Set());
+
+    ids.forEach((id, i) => {
+      window.setTimeout(() => {
+        const failed = Math.random() < 0.12;
+        setContacts((prev) =>
+          prev.map((c) => {
+            if (c.id !== id) return c;
+            if (failed) return { ...c, status: "failed" as const };
+            const [first, last] = c.name.split(" ");
+            return {
+              ...c,
+              status: "redeemed" as const,
+              email: `${first.toLowerCase()}.${(last ?? "").toLowerCase()}@${domainOf(c.companyId)}`,
+              emailSource: SOURCES[Math.floor(Math.random() * SOURCES.length)],
+              emailQuality: randomEmailQuality(),
+              phone:
+                Math.random() < 0.7
+                  ? `+1 ${Math.floor(200 + Math.random() * 700)}-${Math.floor(200 + Math.random() * 700)}-${Math.floor(1000 + Math.random() * 9000)}`
+                  : null,
+              phoneSource: Math.random() < 0.7 ? SOURCES[Math.floor(Math.random() * SOURCES.length)] : null,
+            };
+          }),
+        );
+      }, 900 + i * 250);
+    });
   }
 
   return (
@@ -217,7 +234,6 @@ export function ContactsWorkspace() {
                         <TableHead>Name</TableHead>
                         <TableHead>Title</TableHead>
                         <TableHead>Email</TableHead>
-                        <TableHead>Quality</TableHead>
                         <TableHead>Phone</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
@@ -245,15 +261,6 @@ export function ContactsWorkspace() {
                             )}
                           </TableCell>
                           <TableCell>
-                            {ct.emailQuality ? (
-                              <Badge variant="outline" className={cn("border-transparent capitalize", EMAIL_QUALITY_STYLES[ct.emailQuality])}>
-                                {ct.emailQuality}
-                              </Badge>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
                             {ct.phone ? (
                               <span className="flex items-center gap-1.5 text-sm">
                                 <Phone className="size-3.5 text-muted-foreground" /> {ct.phone}
@@ -265,14 +272,10 @@ export function ContactsWorkspace() {
                           <TableCell>
                             <Badge
                               variant="outline"
-                              className={cn(
-                                "border-transparent",
-                                ct.status === "redeemed"
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "bg-muted text-muted-foreground",
-                              )}
+                              className={cn("gap-1.5 border-transparent", CONTACT_STATUS_STYLES[ct.status])}
                             >
-                              {ct.status === "redeemed" ? "Redeemed" : "Listed"}
+                              {ct.status === "in_process" && <Loader2 className="size-3 animate-spin" />}
+                              {CONTACT_STATUS_LABELS[ct.status]}
                             </Badge>
                           </TableCell>
                         </TableRow>

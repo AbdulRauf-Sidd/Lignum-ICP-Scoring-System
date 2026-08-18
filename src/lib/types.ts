@@ -8,7 +8,6 @@ export type CompanyStatus =
 export type TriageReason =
   | "entity_ambiguous"
   | "low_confidence_sector"
-  | "icp_no_match"
   | null;
 
 export type LifecycleStatus = "prospect" | "exported" | "client";
@@ -73,7 +72,7 @@ export interface Company {
   oneLineReason: string;
 }
 
-export type ContactStatus = "listed" | "redeemed";
+export type ContactStatus = "listed" | "in_process" | "redeemed" | "failed";
 export type EmailQuality = "high" | "medium" | "low" | null;
 export type DetailSource = "cognism" | "syntax_match" | "apollo" | "prospeo";
 
@@ -116,21 +115,6 @@ export interface UsageRun {
   companyCount: number;
   createdAt: string;
   items: UsageItem[];
-}
-
-export type NotificationType =
-  | "failed_enrichment"
-  | "low_confidence"
-  | "no_match"
-  | "low_email_quality";
-
-export interface NotificationItem {
-  id: string;
-  type: NotificationType;
-  message: string;
-  companyId: string | null;
-  createdAt: string;
-  read: boolean;
 }
 
 export interface AdverseEvent {

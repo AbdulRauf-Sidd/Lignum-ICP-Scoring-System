@@ -2,31 +2,21 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu, Bell, Layers } from "lucide-react";
+import { Menu, Layers } from "lucide-react";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { CURRENT_USER } from "@/lib/constants";
-import { COMPANIES, NOTIFICATIONS } from "@/lib/mock/data";
-import { formatRelativeTime } from "@/lib/format";
-import { NOTIFICATION_ICONS, NOTIFICATION_LABELS } from "@/lib/notification-meta";
+import { COMPANIES } from "@/lib/mock/data";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const triageCount = COMPANIES.filter((c) => c.status === "triage").length;
-  const unreadNotifications = NOTIFICATIONS.filter((n) => !n.read);
 
-  const counts = { triage: triageCount, notifications: unreadNotifications.length };
+  const counts = { triage: triageCount };
 
   return (
     <div className="flex min-h-svh w-full bg-background">
@@ -51,47 +41,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Sheet>
 
           <div className="flex-1" />
-
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="size-4" />
-                {unreadNotifications.length > 0 && (
-                  <span className="absolute right-1.5 top-1.5 flex size-2 rounded-full bg-destructive" />
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-80 p-0">
-              <div className="flex items-center justify-between border-b px-3 py-2">
-                <p className="text-sm font-medium">Notifications</p>
-                <Badge variant="secondary">{unreadNotifications.length} unread</Badge>
-              </div>
-              <ScrollArea className="h-80">
-                <div className="flex flex-col divide-y">
-                  {NOTIFICATIONS.slice(0, 15).map((n) => {
-                    const Icon = NOTIFICATION_ICONS[n.type];
-                    return (
-                      <div key={n.id} className="flex gap-2.5 px-3 py-2.5">
-                        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {NOTIFICATION_LABELS[n.type]}
-                          </p>
-                          <p className={n.read ? "text-sm text-muted-foreground" : "text-sm"}>
-                            {n.message}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            {formatRelativeTime(n.createdAt)}
-                          </p>
-                        </div>
-                        {!n.read && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
 
           <ThemeToggle />
 
