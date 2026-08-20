@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { Menu, Layers } from "lucide-react";
+import { AutoRefresh } from "@/components/layout/auto-refresh";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-svh w-full bg-background">
+      <AutoRefresh />
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <SidebarBrand />
         <SidebarNav counts={counts} />
