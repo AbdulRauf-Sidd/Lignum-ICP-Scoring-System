@@ -6,7 +6,7 @@ export default function ImportPage() {
     <div>
       <PageHeader
         title="Import & queue"
-        description="Add companies by CSV or manually, choose the ICP for this batch, then run the validation gate and enrichment."
+        description="Add companies by CSV or manually, then run the validation gate and enrichment. Sector and sub-sector are assigned automatically during classification."
       />
       <ImportWorkspace />
     </div>

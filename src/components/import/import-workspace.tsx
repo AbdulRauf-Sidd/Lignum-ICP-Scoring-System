@@ -17,13 +17,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -34,7 +27,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { ICP_PROFILES } from "@/lib/mock/data";
 import { toast } from "sonner";
 
 type RowIssue = "missing_domain" | "malformed_domain" | null;
@@ -73,7 +65,6 @@ export function ImportWorkspace() {
   const [rows, setRows] = React.useState<Row[]>([]);
   const [manualName, setManualName] = React.useState("");
   const [manualDomain, setManualDomain] = React.useState("");
-  const [icp, setIcp] = React.useState<string>("");
   const [reviewOpen, setReviewOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [result, setResult] = React.useState<SubmitResult | null>(null);
@@ -133,18 +124,15 @@ export function ImportWorkspace() {
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  const selectedIcp = ICP_PROFILES.find((p) => p.id === icp);
   const validRows = rows.filter((r) => r.issue === null);
   const issueRows = rows.filter((r) => r.issue !== null);
 
   async function runBatch() {
-    if (!selectedIcp) return;
     setReviewOpen(false);
     setSubmitting(true);
     setResult(null);
 
     const payload = {
-      icp: selectedIcp.name,
       rows: validRows.map((r) => ({ name: r.name, domain: r.domain })),
     };
 
@@ -309,8 +297,10 @@ export function ImportWorkspace() {
       {rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>3. Select ICP & run</CardTitle>
-            <CardDescription>An ICP is required for the whole batch before it can run.</CardDescription>
+            <CardTitle>3. Run</CardTitle>
+            <CardDescription>
+              Sector and sub-sector are assigned automatically during classification — nothing to pick here.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {issueRows.length > 0 && (
@@ -321,24 +311,9 @@ export function ImportWorkspace() {
                 </AlertTitle>
               </Alert>
             )}
-            <div className="max-w-xs space-y-1.5">
-              <Label>ICP for this batch</Label>
-              <Select value={icp} onValueChange={setIcp}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose an ICP" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ICP_PROFILES.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <Button
-                disabled={!icp || validRows.length === 0 || issueRows.length > 0 || submitting}
+                disabled={validRows.length === 0 || issueRows.length > 0 || submitting}
                 onClick={() => setReviewOpen(true)}
               >
                 {submitting && <Loader2 className="animate-spin" />}
@@ -354,9 +329,8 @@ export function ImportWorkspace() {
           <DialogHeader>
             <DialogTitle>Send this batch to n8n?</DialogTitle>
             <DialogDescription>
-              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be sent as JSON under{" "}
-              <span className="font-medium text-foreground">{selectedIcp?.name}</span> to run the enrichment
-              pipeline.
+              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be sent as JSON to run the
+              enrichment pipeline.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

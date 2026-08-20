@@ -8,14 +8,12 @@ interface ImportRow {
 }
 
 interface ImportPayload {
-  icp: string;
   rows: ImportRow[];
 }
 
 function isImportPayload(value: unknown): value is ImportPayload {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  if (typeof v.icp !== "string" || !v.icp) return false;
   if (!Array.isArray(v.rows) || v.rows.length === 0) return false;
   return v.rows.every(
     (r) => r && typeof r === "object" && typeof (r as ImportRow).domain === "string",
@@ -42,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   if (!isImportPayload(payload)) {
     return NextResponse.json(
-      { error: "Expected { icp: string, rows: [{ name, domain }] } with at least one row." },
+      { error: "Expected { rows: [{ name, domain }] } with at least one row." },
       { status: 400 },
     );
   }
