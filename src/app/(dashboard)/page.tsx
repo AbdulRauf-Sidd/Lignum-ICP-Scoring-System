@@ -1,25 +1,20 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  ListChecks,
-  GitMerge,
-  HelpCircle,
-  Users,
-  XCircle,
-  Clock,
-  TrendingDown,
-} from "lucide-react";
+import { ArrowRight, ListChecks, GitMerge, HelpCircle, Loader2, XCircle, Clock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getHomeStats, getLastRun, getRecentActivity } from "@/lib/mock/derived";
+import { getHomeStats } from "@/lib/data/companies";
+import { getRecentUsageRuns } from "@/lib/data/usage";
 import { formatRelativeTime, formatDateTime } from "@/lib/format";
 import { CURRENT_USER } from "@/lib/constants";
 
-export default function HomePage() {
-  const stats = getHomeStats();
-  const lastRun = getLastRun();
-  const activity = getRecentActivity();
+// Pipeline counts and recent runs change as n8n runs — never freeze this page.
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const [stats, recentRuns] = await Promise.all([getHomeStats(), getRecentUsageRuns(8)]);
+  const lastRun = recentRuns[0] ?? null;
 
   const actionItems = [
     stats.entityAmbiguousCount > 0 && {
@@ -36,13 +31,6 @@ export default function HomePage() {
       detail: "Approve, edit or reject the proposed classification.",
       href: "/triage?reason=low_confidence_sector",
     },
-    stats.pendingContactsCount > 0 && {
-      icon: Users,
-      count: stats.pendingContactsCount,
-      label: "contacts are listed but not yet redeemed",
-      detail: "Select and bulk-enrich to reveal email and phone.",
-      href: "/contacts",
-    },
   ].filter(Boolean) as { icon: typeof GitMerge; count: number; label: string; detail: string; href: string }[];
 
   return (
@@ -54,8 +42,8 @@ export default function HomePage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={ListChecks} label="Awaiting triage" value={stats.triageCount} href="/triage" />
-        <StatCard icon={TrendingDown} label="Scored this week" value={stats.scoredThisWeekCount} href="/target-list" />
-        <StatCard icon={Users} label="Contacts to redeem" value={stats.pendingContactsCount} href="/contacts" />
+        <StatCard icon={Clock} label="Scored this week" value={stats.scoredThisWeekCount} href="/target-list" />
+        <StatCard icon={Loader2} label="In progress" value={stats.inProgressCount} href="/import" />
         <StatCard icon={XCircle} label="Failed enrichments" value={stats.failedCount} href="/import" />
       </div>
 
@@ -100,15 +88,18 @@ export default function HomePage() {
           <CardContent>
             {lastRun ? (
               <div className="flex flex-col gap-3">
-                <div>
-                  <p className="text-sm font-medium capitalize">
-                    {lastRun.runType.replace("_", " ")} run
-                  </p>
-                  <p className="text-xs text-muted-foreground">{formatDateTime(lastRun.createdAt)}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium capitalize">{lastRun.run_type.replace("_", " ")} run</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(lastRun.started_at)}</p>
+                  </div>
+                  <Badge variant={lastRun.status === "in_progress" ? "secondary" : "outline"} className="capitalize">
+                    {lastRun.status.replace("_", " ")}
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Run by</span>
-                  <span className="font-medium">{lastRun.runBy}</span>
+                  <span className="font-medium">{lastRun.run_by ?? "—"}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Companies</span>
@@ -131,17 +122,25 @@ export default function HomePage() {
             <CardTitle>Recent activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col divide-y">
-              {activity.map((event) => (
-                <div key={event.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <div>
-                    <p className="font-medium">{event.label}</p>
-                    <p className="text-xs text-muted-foreground">{event.detail}</p>
+            {recentRuns.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No activity yet.</p>
+            ) : (
+              <div className="flex flex-col divide-y">
+                {recentRuns.map((run) => (
+                  <div key={run.id} className="flex items-center justify-between py-2.5 text-sm">
+                    <div>
+                      <p className="font-medium capitalize">
+                        {run.run_type.replace("_", " ")} run{run.run_by ? ` by ${run.run_by}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {run.companyCount} {run.companyCount === 1 ? "company" : "companies"}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatRelativeTime(run.started_at)}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{formatRelativeTime(event.createdAt)}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

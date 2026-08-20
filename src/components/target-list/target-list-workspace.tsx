@@ -18,7 +18,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { COMPANIES } from "@/lib/mock/data";
 import { ICP_NAMES, SECTORS } from "@/lib/constants";
 import { ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
@@ -33,9 +32,8 @@ type ExportedFilter = "all" | "exported" | "not_exported";
 const PAGE_SIZE = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const scoredCompanies = COMPANIES.filter((c) => c.status === "scored");
-
-export function TargetListWorkspace() {
+export function TargetListWorkspace({ companies }: { companies: Company[] }) {
+  const scoredCompanies = companies;
   const [tab, setTab] = React.useState<string>(ICP_NAMES[0]);
   const [sector, setSector] = React.useState<string>("all");
   const [subSector, setSubSector] = React.useState<string>("all");

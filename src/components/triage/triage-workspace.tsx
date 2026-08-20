@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
-import { GitMerge, HelpCircle, Check, X, MapPin, Globe } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { GitMerge, HelpCircle, Check, X, MapPin, Globe, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,15 +17,15 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { COMPANIES } from "@/lib/mock/data";
 import { SECTORS } from "@/lib/constants";
 import { ScoreBar } from "@/components/shared/score-display";
 import { MatchFlagBadge } from "@/components/shared/badges";
 import type { Company, TriageReason } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { approveCompany, confirmEntityResolution } from "@/app/(dashboard)/triage/actions";
 
-type Resolution = "pending" | "approved" | "rejected";
+type Resolution = "pending" | "approved" | "rejected" | "resolving";
 
 const REASON_META: Record<
   NonNullable<TriageReason>,
@@ -43,11 +43,12 @@ const REASON_META: Record<
   },
 };
 
-export function TriageWorkspace() {
+export function TriageWorkspace({ companies }: { companies: Company[] }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialReason = searchParams.get("reason") as TriageReason | null;
 
-  const [items] = React.useState<Company[]>(() => COMPANIES.filter((c) => c.status === "triage"));
+  const items = companies;
   const [resolutions, setResolutions] = React.useState<Record<string, Resolution>>({});
   const [edits, setEdits] = React.useState<Record<string, { sector: string; subSector: string }>>({});
   const [candidateSelections, setCandidateSelections] = React.useState<Record<string, string>>({});
@@ -55,6 +56,7 @@ export function TriageWorkspace() {
     initialReason ?? "all",
   );
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
 
   const filtered = items.filter((c) => filter === "all" || c.triageReason === filter);
 
@@ -70,12 +72,22 @@ export function TriageWorkspace() {
 
   const selected = items.find((c) => c.id === effectiveSelectedId) ?? null;
 
-  function approve(company: Company) {
-    setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
-    toast.success(`${company.name} approved`, {
-      description: "Moved to the target list.",
-    });
-    selectNext(company.id);
+  async function approve(company: Company) {
+    const edit = edits[company.id];
+    const sector = edit?.sector ?? company.proposedSector ?? company.sector;
+    const subSector = edit?.subSector ?? company.proposedSubSector ?? company.subSector;
+    setPendingId(company.id);
+    try {
+      await approveCompany(company.id, sector, subSector);
+      setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
+      toast.success(`${company.name} approved`, { description: "Moved to the target list." });
+      selectNext(company.id);
+      router.refresh();
+    } catch (err) {
+      toast.error("Approve failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setPendingId(null);
+    }
   }
 
   function reject(company: Company) {
@@ -83,21 +95,33 @@ export function TriageWorkspace() {
     toast(`${company.name} rejected`, { description: "Remains in triage for further review." });
   }
 
-  function confirmEntity(company: Company) {
+  async function confirmEntity(company: Company) {
     const candidateId = candidateSelections[company.id];
-    if (!candidateId) {
+    const candidate = company.candidateEntities.find((c) => c.id === candidateId);
+    if (!candidate) {
       toast.error("Select a candidate entity first");
       return;
     }
-    setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
-    toast.success(`Entity confirmed for ${company.name}`, {
-      description: "The run will continue with the confirmed company.",
-    });
-    selectNext(company.id);
+    setPendingId(company.id);
+    try {
+      await confirmEntityResolution(company.id, { id: candidate.id, source: candidate.source });
+      setResolutions((prev) => ({ ...prev, [company.id]: "resolving" }));
+      toast.success(`Entity confirmed for ${company.name}`, {
+        description: "Reprocessing — it'll return to triage for approval once scoring finishes, or leave the queue if nothing else needs review.",
+      });
+      selectNext(company.id);
+      router.refresh();
+    } catch (err) {
+      toast.error("Couldn't confirm entity", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setPendingId(null);
+    }
   }
 
   function selectNext(currentId: string) {
-    const remaining = filtered.filter((c) => c.id !== currentId && resolutions[c.id] !== "approved");
+    const remaining = filtered.filter(
+      (c) => c.id !== currentId && resolutions[c.id] !== "approved" && resolutions[c.id] !== "resolving",
+    );
     setSelectedId(remaining[0]?.id ?? null);
   }
 
@@ -131,7 +155,7 @@ export function TriageWorkspace() {
                     className={cn(
                       "flex w-full flex-col gap-1.5 px-3 py-3 text-left transition-colors hover:bg-accent",
                       effectiveSelectedId === c.id && "bg-accent",
-                      resolution === "approved" && "opacity-50",
+                      (resolution === "approved" || resolution === "resolving") && "opacity-50",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -139,6 +163,11 @@ export function TriageWorkspace() {
                       {resolution === "approved" && (
                         <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                           Approved
+                        </Badge>
+                      )}
+                      {resolution === "resolving" && (
+                        <Badge variant="outline" className="gap-1 border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                          <Loader2 className="size-3 animate-spin" /> Resolving
                         </Badge>
                       )}
                       {resolution === "rejected" && (
@@ -177,6 +206,7 @@ export function TriageWorkspace() {
                 onApprove={() => approve(selected)}
                 onReject={() => reject(selected)}
                 onConfirmEntity={() => confirmEntity(selected)}
+                isPending={pendingId === selected.id}
               />
             ) : (
               <Card>
@@ -202,6 +232,7 @@ function TriageDetail({
   onApprove,
   onReject,
   onConfirmEntity,
+  isPending,
 }: {
   company: Company;
   resolution: Resolution;
@@ -212,6 +243,7 @@ function TriageDetail({
   onApprove: () => void;
   onReject: () => void;
   onConfirmEntity: () => void;
+  isPending: boolean;
 }) {
   const meta = company.triageReason ? REASON_META[company.triageReason] : null;
   const sector = edit?.sector ?? company.proposedSector ?? "";
@@ -225,7 +257,10 @@ function TriageDetail({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">{company.name}</h2>
-            <p className="text-sm text-muted-foreground">{company.domain} · {company.country}</p>
+            <p className="text-sm text-muted-foreground">
+              {company.domain}
+              {company.country ? ` · ${company.country}` : ""}
+            </p>
           </div>
           {meta && (
             <Badge variant="outline" className="gap-1.5 border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -245,7 +280,7 @@ function TriageDetail({
               {company.candidateEntities.map((cand) => (
                 <button
                   key={cand.id}
-                  disabled={resolved}
+                  disabled={resolved || isPending}
                   onClick={() => onCandidateSelect(cand.id)}
                   className={cn(
                     "flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
@@ -273,11 +308,11 @@ function TriageDetail({
             </div>
             {!resolved && (
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={onReject}>
+                <Button variant="outline" onClick={onReject} disabled={isPending}>
                   <X /> Reject
                 </Button>
-                <Button onClick={onConfirmEntity}>
-                  <Check /> Confirm & continue run
+                <Button onClick={onConfirmEntity} disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
                 </Button>
               </div>
             )}
@@ -288,7 +323,7 @@ function TriageDetail({
               <div className="space-y-1.5">
                 <Label>Sector</Label>
                 <Select
-                  disabled={resolved}
+                  disabled={resolved || isPending}
                   value={sector}
                   onValueChange={(v) => onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "")}
                 >
@@ -306,7 +341,7 @@ function TriageDetail({
               </div>
               <div className="space-y-1.5">
                 <Label>Sub-sector</Label>
-                <Select disabled={resolved} value={subSector} onValueChange={(v) => onEditChange(sector, v)}>
+                <Select disabled={resolved || isPending} value={subSector} onValueChange={(v) => onEditChange(sector, v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -349,17 +384,21 @@ function TriageDetail({
 
             {!resolved && (
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={onReject}>
+                <Button variant="outline" onClick={onReject} disabled={isPending}>
                   <X /> Reject
                 </Button>
-                <Button onClick={onApprove}>
-                  <Check /> Approve
+                <Button onClick={onApprove} disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Approve
                 </Button>
               </div>
             )}
             {resolved && (
               <p className="text-sm text-muted-foreground">
-                {resolution === "approved" ? "Approved — now on the target list." : "Rejected — remains in triage."}
+                {resolution === "approved"
+                  ? "Approved — now on the target list."
+                  : resolution === "resolving"
+                    ? "Reprocessing — it'll come back here if it still needs review."
+                    : "Rejected — remains in triage."}
               </p>
             )}
           </div>

@@ -5,17 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getCompanyById, getContactsForCompany } from "@/lib/mock/data";
+import { getCompanyById } from "@/lib/data/companies";
+import { getContactsForCompanies } from "@/lib/data/contacts";
+
+// Always fetch fresh — this company's status/score can change between
+// n8n runs, and freezing it at build time would show stale data.
+export const dynamic = "force-dynamic";
 import { ScoreRing, ScoreBar } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 
 export default async function CompanyDetailPage({ params }: PageProps<"/target-list/[id]">) {
   const { id } = await params;
-  const company = getCompanyById(id);
+  const company = await getCompanyById(id);
   if (!company) notFound();
 
-  const contacts = getContactsForCompany(company.id);
+  const contacts = await getContactsForCompanies([id]);
 
   return (
     <div>
@@ -40,11 +45,14 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
             <span className="flex items-center gap-1">
               <Globe className="size-3.5" /> {company.domain}
             </span>
+            {company.country && (
+              <span className="flex items-center gap-1">
+                <MapPin className="size-3.5" /> {company.country}
+              </span>
+            )}
             <span className="flex items-center gap-1">
-              <MapPin className="size-3.5" /> {company.country}
-            </span>
-            <span className="flex items-center gap-1">
-              <Building2 className="size-3.5" /> {company.sector} · {company.subSector}
+              <Building2 className="size-3.5" /> {company.sector || "Not classified"}
+              {company.subSector ? ` · ${company.subSector}` : ""}
             </span>
             <span className="flex items-center gap-1">
               <Calendar className="size-3.5" /> imported {formatDate(company.importedAt)}
@@ -55,7 +63,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
           <ScoreRing score={company.score} size={52} />
           <div>
             <p className="text-xs text-muted-foreground">Total score</p>
-            <p className="text-sm font-medium">{company.confidence}% confidence</p>
+            <p className="text-sm font-medium">{company.confidence ?? "—"}% confidence</p>
           </div>
         </div>
       </div>
@@ -68,7 +76,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge className="text-sm">{company.icp}</Badge>
+                <Badge className="text-sm">{company.icp || "Unassigned"}</Badge>
                 <MatchFlagBadge flag={company.matchFlag} />
               </div>
               <p className="text-sm text-muted-foreground">{company.oneLineReason}</p>
@@ -80,16 +88,20 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
               <CardTitle>Score breakdown</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              {company.scoringBreakdown.map((cat) => (
-                <ScoreBar
-                  key={cat.key}
-                  label={cat.label}
-                  subScore={cat.subScore}
-                  weight={cat.weight}
-                  contribution={cat.contribution}
-                  excluded={cat.excluded}
-                />
-              ))}
+              {company.scoringBreakdown.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No scoring run recorded for this company yet.</p>
+              ) : (
+                company.scoringBreakdown.map((cat) => (
+                  <ScoreBar
+                    key={cat.key}
+                    label={cat.label}
+                    subScore={cat.subScore}
+                    weight={cat.weight}
+                    contribution={cat.contribution}
+                    excluded={cat.excluded}
+                  />
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -122,20 +134,14 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                         <Badge variant="outline">cognism</Badge>
                       </TableCell>
                     </TableRow>
-                    {company.sourcedFields
-                      .filter((f) => f.field !== "Annual revenue" && f.field !== "Headcount")
-                      .map((f) => (
-                        <TableRow key={f.field}>
-                          <TableCell>{f.field}</TableCell>
-                          <TableCell>{f.value}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{f.source}</Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
                   </TableBody>
                 </Table>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Revenue and headcount aren&apos;t written back to the company row yet — the pipeline only holds
+                them in memory for scoring. The full per-field source breakdown (from `enrichment_data`) isn&apos;t
+                wired up here yet either.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -146,30 +152,24 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
               <CardTitle>Contacts ({contacts.length})</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col divide-y">
-              {contacts.length === 0 && (
-                <p className="py-6 text-center text-sm text-muted-foreground">No contacts pulled yet.</p>
-              )}
-              {contacts.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-2 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{c.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{c.title}</p>
+              {contacts.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No contacts listed yet — nothing pulled from Cognism for this company.
+                </p>
+              ) : (
+                contacts.map((c) => (
+                  <div key={c.id} className="py-2.5">
+                    <p className="text-sm font-medium">{c.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.title}
+                      {c.seniority ? ` (${c.seniority})` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {c.email ?? "Redeem to reveal"}
+                    </p>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      c.status === "redeemed"
-                        ? "border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        : "border-transparent bg-muted text-muted-foreground"
-                    }
-                  >
-                    {c.status === "redeemed" ? "Redeemed" : "Listed"}
-                  </Badge>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" className="mt-3" asChild>
-                <Link href={`/contacts?company=${company.id}`}>Open in contacts workspace</Link>
-              </Button>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>

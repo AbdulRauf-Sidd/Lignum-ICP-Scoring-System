@@ -5,12 +5,13 @@ import {
   UploadCloud,
   Plus,
   Trash2,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
   FileSpreadsheet,
   Download,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -34,36 +33,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ICP_PROFILES, COMPANIES } from "@/lib/mock/data";
-import { StatusBadge } from "@/components/shared/badges";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { ICP_PROFILES } from "@/lib/mock/data";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
-interface StagedRow {
+type RowIssue = "missing_domain" | "malformed_domain" | null;
+
+interface Row {
   id: string;
   name: string;
   domain: string;
-  issue: "missing_name" | "missing_domain" | "malformed_domain" | null;
-}
-
-type LiveStatus = "queued" | "enriching" | "triage" | "scored" | "failed" | "insufficient_data";
-
-interface LiveCompany {
-  id: string;
-  name: string;
-  domain: string;
-  status: LiveStatus;
+  issue: RowIssue;
 }
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 
-function validateRow(name: string, domain: string): StagedRow["issue"] {
-  if (!name.trim()) return "missing_name";
+function validateDomain(domain: string): RowIssue {
   if (!domain.trim()) return "missing_domain";
   if (!DOMAIN_RE.test(domain.trim())) return "malformed_domain";
   return null;
 }
+
+const ISSUE_LABEL: Record<NonNullable<RowIssue>, string> = {
+  missing_domain: "Missing domain",
+  malformed_domain: "Malformed domain",
+};
 
 let rowIdCounter = 0;
 function nextRowId() {
@@ -71,28 +65,27 @@ function nextRowId() {
   return `row-${Date.now()}-${rowIdCounter}`;
 }
 
-const ISSUE_LABEL: Record<NonNullable<StagedRow["issue"]>, string> = {
-  missing_name: "Missing company name",
-  missing_domain: "Missing domain",
-  malformed_domain: "Malformed domain",
-};
-
-const inFlightCompanies = COMPANIES.filter((c) => c.status === "queued" || c.status === "enriching").slice(0, 8);
+type SubmitResult =
+  | { kind: "success"; raw: unknown }
+  | { kind: "error"; message: string; details?: unknown };
 
 export function ImportWorkspace() {
-  const [rows, setRows] = React.useState<StagedRow[]>([]);
+  const [rows, setRows] = React.useState<Row[]>([]);
   const [manualName, setManualName] = React.useState("");
   const [manualDomain, setManualDomain] = React.useState("");
   const [icp, setIcp] = React.useState<string>("");
   const [reviewOpen, setReviewOpen] = React.useState(false);
-  const [liveCompanies, setLiveCompanies] = React.useState<LiveCompany[] | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [result, setResult] = React.useState<SubmitResult | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const validRows = rows.filter((r) => r.issue === null);
-  const issueRows = rows.filter((r) => r.issue !== null);
-
   function addRow(name: string, domain: string) {
-    setRows((prev) => [...prev, { id: nextRowId(), name, domain, issue: validateRow(name, domain) }]);
+    if (!name.trim() && !domain.trim()) return;
+    const trimmedDomain = domain.trim();
+    setRows((prev) => [
+      ...prev,
+      { id: nextRowId(), name: name.trim(), domain: trimmedDomain, issue: validateDomain(trimmedDomain) },
+    ]);
   }
 
   function handleFile(file: File) {
@@ -101,15 +94,19 @@ export function ImportWorkspace() {
       const text = String(reader.result ?? "");
       const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
       let added = 0;
+      let flagged = 0;
       lines.forEach((line, idx) => {
         const cells = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
         if (idx === 0 && /company|domain|name/i.test(line)) return; // header row
         const [name = "", domain = ""] = cells;
         if (!name && !domain) return;
+        if (validateDomain(domain)) flagged += 1;
         addRow(name, domain);
         added += 1;
       });
-      toast.success(`Imported ${added} rows from ${file.name}`);
+      toast.success(`Parsed ${added} rows from ${file.name}`, {
+        description: flagged > 0 ? `${flagged} row${flagged === 1 ? "" : "s"} flagged — fix or remove before running.` : "All rows look valid.",
+      });
     };
     reader.readAsText(file);
   }
@@ -127,7 +124,6 @@ export function ImportWorkspace() {
 
   function handleManualAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!manualName.trim() && !manualDomain.trim()) return;
     addRow(manualName, manualDomain);
     setManualName("");
     setManualDomain("");
@@ -137,56 +133,54 @@ export function ImportWorkspace() {
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  const readyEstimate = Math.max(0, Math.round(validRows.length * 0.78));
-  const skippedEstimate = validRows.length - readyEstimate;
+  const selectedIcp = ICP_PROFILES.find((p) => p.id === icp);
+  const validRows = rows.filter((r) => r.issue === null);
+  const issueRows = rows.filter((r) => r.issue !== null);
 
-  function startRun() {
+  async function runBatch() {
+    if (!selectedIcp) return;
     setReviewOpen(false);
-    const live: LiveCompany[] = validRows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      domain: r.domain,
-      status: "queued",
-    }));
-    setLiveCompanies(live);
-    setRows([]);
+    setSubmitting(true);
+    setResult(null);
 
-    live.forEach((c, i) => {
-      const startDelay = 400 + i * 220;
-      window.setTimeout(() => {
-        setLiveCompanies((prev) => prev?.map((x) => (x.id === c.id ? { ...x, status: "enriching" } : x)) ?? prev);
-      }, startDelay);
+    const payload = {
+      icp: selectedIcp.name,
+      rows: validRows.map((r) => ({ name: r.name, domain: r.domain })),
+    };
 
-      window.setTimeout(() => {
-        const roll = Math.random();
-        const final: LiveStatus =
-          roll < 0.15
-            ? "insufficient_data"
-            : roll < 0.28
-              ? "triage"
-              : roll < 0.34
-                ? "failed"
-                : "scored";
-        setLiveCompanies((prev) => prev?.map((x) => (x.id === c.id ? { ...x, status: final } : x)) ?? prev);
-      }, startDelay + 1400 + i * 90);
-    });
+    try {
+      const res = await fetch("/api/import/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      if (!res.ok || body.ok === false) {
+        setResult({ kind: "error", message: body.error ?? "The batch could not be sent.", details: body.details });
+        toast.error("Batch failed", { description: body.error ?? "Check the details below." });
+      } else {
+        setResult({ kind: "success", raw: body.result });
+        toast.success("Batch sent to n8n");
+        setRows([]);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setResult({ kind: "error", message: `Request failed: ${message}` });
+      toast.error("Request failed", { description: message });
+    } finally {
+      setSubmitting(false);
+    }
   }
-
-  const liveDone = liveCompanies?.every((c) => c.status !== "queued" && c.status !== "enriching") ?? false;
-  const liveProgress = liveCompanies
-    ? Math.round(
-        (liveCompanies.filter((c) => c.status !== "queued" && c.status !== "enriching").length /
-          liveCompanies.length) *
-          100,
-      )
-    : 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle>1. Add companies</CardTitle>
-          <CardDescription>Company name is recommended; domain is mandatory.</CardDescription>
+          <CardDescription>
+            Company name is recommended; domain is mandatory. Each row is checked as you add it — fix or remove
+            anything flagged before you can run.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="csv">
@@ -262,7 +256,7 @@ export function ImportWorkspace() {
       {rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>2. Staged rows</CardTitle>
+            <CardTitle>2. Rows to send ({rows.length})</CardTitle>
             <CardDescription>
               {validRows.length} valid · {issueRows.length} flagged for fix or removal
             </CardDescription>
@@ -281,11 +275,11 @@ export function ImportWorkspace() {
                 <TableBody>
                   {rows.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell className={cn(!row.name.trim() && "italic text-muted-foreground")}>
-                        {row.name.trim() || "—"}
+                      <TableCell className={!row.name ? "italic text-muted-foreground" : undefined}>
+                        {row.name || "—"}
                       </TableCell>
-                      <TableCell className={cn(!row.domain.trim() && "italic text-muted-foreground")}>
-                        {row.domain.trim() || "—"}
+                      <TableCell className={!row.domain ? "italic text-muted-foreground" : undefined}>
+                        {row.domain || "—"}
                       </TableCell>
                       <TableCell>
                         {row.issue ? (
@@ -322,10 +316,9 @@ export function ImportWorkspace() {
             {issueRows.length > 0 && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>Fix or remove flagged rows</AlertTitle>
-                <AlertDescription>
-                  {issueRows.length} row{issueRows.length === 1 ? "" : "s"} cannot run until fixed or removed.
-                </AlertDescription>
+                <AlertTitle>
+                  {issueRows.length} row{issueRows.length === 1 ? "" : "s"} flagged — fix or remove before running.
+                </AlertTitle>
               </Alert>
             )}
             <div className="max-w-xs space-y-1.5">
@@ -345,10 +338,11 @@ export function ImportWorkspace() {
             </div>
             <div>
               <Button
-                disabled={!icp || validRows.length === 0 || issueRows.length > 0}
+                disabled={!icp || validRows.length === 0 || issueRows.length > 0 || submitting}
                 onClick={() => setReviewOpen(true)}
               >
-                Review run ({validRows.length} companies)
+                {submitting && <Loader2 className="animate-spin" />}
+                Upload & run ({validRows.length} rows)
               </Button>
             </div>
           </CardContent>
@@ -358,138 +352,53 @@ export function ImportWorkspace() {
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm this run</DialogTitle>
+            <DialogTitle>Send this batch to n8n?</DialogTitle>
             <DialogDescription>
-              The validation gate checks each company with a free Cognism enrich call before any paid redeem.
+              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be sent as JSON under{" "}
+              <span className="font-medium text-foreground">{selectedIcp?.name}</span> to run the enrichment
+              pipeline.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <ReviewStat label="Companies to process" value={validRows.length} />
-            <ReviewStat label="Estimated ready" value={readyEstimate} />
-            <ReviewStat label="Estimated skipped" value={skippedEstimate} sublabel="insufficient data" />
-            <ReviewStat label="Creditsafe reports" value={readyEstimate} sublabel="native units only" />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Cognism credits: up to {readyEstimate} (worst case one per company). No cost figure is shown, as
-            real cost depends on your contract and bundles.
-          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReviewOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={startRun}>Run batch</Button>
+            <Button onClick={runBatch}>Upload & run</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {liveCompanies && (
+      {result && (
         <Card>
           <CardHeader>
-            <CardTitle>Run status</CardTitle>
-            <CardDescription>
-              {liveDone ? "Run complete." : "Processing — statuses update live."}
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              {result.kind === "success" ? (
+                <>
+                  <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" /> Batch sent
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="size-4 text-destructive" /> Batch failed
+                </>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <Progress value={liveProgress} className="flex-1" />
-              <span className="text-sm tabular-nums text-muted-foreground">{liveProgress}%</span>
-            </div>
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {liveCompanies.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.name || "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">{c.domain}</TableCell>
-                      <TableCell>
-                        <LiveStatusBadge status={c.status} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <CardContent className="flex flex-col gap-3">
+            {result.kind === "error" && (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>{result.message}</AlertTitle>
+              </Alert>
+            )}
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Raw response from n8n</p>
+              <pre className="overflow-x-auto rounded-lg border bg-muted/40 p-3 text-xs">
+                {JSON.stringify(result.kind === "success" ? result.raw : result.details, null, 2)}
+              </pre>
             </div>
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>In-flight from previous runs</CardTitle>
-          <CardDescription>Companies already queued or enriching before this session.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Sector</TableHead>
-                  <TableHead>Imported by</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inFlightCompanies.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.sector}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.importedBy}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={c.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
-  );
-}
-
-function ReviewStat({ label, value, sublabel }: { label: string; value: number; sublabel?: string }) {
-  return (
-    <div className="rounded-lg border px-3 py-2.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
-      {sublabel && <p className="text-[11px] text-muted-foreground">{sublabel}</p>}
-    </div>
-  );
-}
-
-const LIVE_STATUS_STYLES: Record<LiveStatus, string> = {
-  queued: "bg-muted text-muted-foreground",
-  enriching: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  triage: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  scored: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  failed: "bg-destructive/10 text-destructive",
-  insufficient_data: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
-};
-
-const LIVE_STATUS_LABELS: Record<LiveStatus, string> = {
-  queued: "Queued",
-  enriching: "Enriching",
-  triage: "In triage",
-  scored: "Scored",
-  failed: "Failed",
-  insufficient_data: "Skipped — insufficient data",
-};
-
-function LiveStatusBadge({ status }: { status: LiveStatus }) {
-  return (
-    <Badge variant="outline" className={cn("gap-1.5 border-transparent font-medium", LIVE_STATUS_STYLES[status])}>
-      {(status === "queued" || status === "enriching") && <Loader2 className="size-3 animate-spin" />}
-      {LIVE_STATUS_LABELS[status]}
-    </Badge>
   );
 }

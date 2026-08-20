@@ -1,55 +1,27 @@
 "use client";
 
-import * as React from "react";
-import {
-  Line,
-  LineChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { Line, LineChart, Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  getMonthlyScoredTrend,
-  getSectorPerformance,
-  getTierDistribution,
-  getUserBreakdown,
-} from "@/lib/mock/derived";
-import { CURRENT_USER } from "@/lib/constants";
 import { useChartPalette } from "@/hooks/use-chart-palette";
-import { formatGbp } from "@/lib/format";
+import type { MonthlyScoredPoint, SectorPerformance, TierCount } from "@/lib/data/analytics";
 
-export function AnalyticsWorkspace() {
-  const [view, setView] = React.useState<"overall" | "byUser">("overall");
+export function AnalyticsWorkspace({
+  trend,
+  sectorPerf,
+  tierDist,
+}: {
+  trend: MonthlyScoredPoint[];
+  sectorPerf: SectorPerformance[];
+  tierDist: TierCount[];
+}) {
   const palette = useChartPalette();
-
-  const trend = getMonthlyScoredTrend();
-  const sectorPerf = getSectorPerformance();
-  const tierDist = getTierDistribution();
-  const userBreakdown = getUserBreakdown();
 
   return (
     <div className="flex flex-col gap-6">
-      {CURRENT_USER.role === "admin" && (
-        <Tabs value={view} onValueChange={(v) => setView(v as "overall" | "byUser")}>
-          <TabsList>
-            <TabsTrigger value="overall">Overall</TabsTrigger>
-            <TabsTrigger value="byUser">By user</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Companies scored per month</CardTitle>
-          <CardDescription>Trend across the current build-out period.</CardDescription>
+          <CardDescription>Trailing 6 months.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-64 w-full">
@@ -128,38 +100,6 @@ export function AnalyticsWorkspace() {
           </CardContent>
         </Card>
       </div>
-
-      {CURRENT_USER.role === "admin" && view === "byUser" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Breakdown by user</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Runs</TableHead>
-                    <TableHead>Companies processed</TableHead>
-                    <TableHead>Metered spend</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {userBreakdown.map((row) => (
-                    <TableRow key={row.user}>
-                      <TableCell className="font-medium">{row.user}</TableCell>
-                      <TableCell>{row.runs}</TableCell>
-                      <TableCell>{row.companies}</TableCell>
-                      <TableCell>{formatGbp(row.spendGbp)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

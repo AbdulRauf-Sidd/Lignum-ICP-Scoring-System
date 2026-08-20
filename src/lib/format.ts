@@ -24,6 +24,15 @@ export function formatGbp(value: number | null): string {
   }).format(value);
 }
 
+export function formatUsd(value: number | null): string {
+  if (value === null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function formatNumber(value: number | null): string {
   if (value === null) return "—";
   return new Intl.NumberFormat("en-GB").format(value);
@@ -48,7 +57,7 @@ export function formatDateTime(iso: string | null): string {
 }
 
 export function formatRelativeTime(iso: string): string {
-  const now = new Date("2026-08-12T12:00:00Z").getTime();
+  const now = Date.now();
   const then = new Date(iso).getTime();
   const diffMs = now - then;
   const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));

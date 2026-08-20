@@ -1,211 +1,382 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ICP_PROFILES } from "@/lib/mock/data";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
-import type { IcpProfile } from "@/lib/types";
+import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
+import { saveIcpProfile, deleteIcpProfile, setSectorTaxonomyActive } from "@/app/(dashboard)/admin/config/actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const CATEGORY_KEYS: (keyof IcpProfile["weights"])[] = [
-  "icp_fit",
-  "scale_footprint",
-  "hiring_growth",
-  "financial_viability",
-];
+const WEIGHT_KEYS = [
+  "weight_icp_fit",
+  "weight_scale_footprint",
+  "weight_hiring_growth",
+  "weight_financial_viability",
+] as const;
 
-export function ConfigWorkspace() {
-  const [weights, setWeights] = React.useState<Record<string, IcpProfile["weights"]>>(() =>
-    Object.fromEntries(ICP_PROFILES.map((p) => [p.id, { ...p.weights }])),
+const CATEGORY_LABEL_BY_WEIGHT_KEY: Record<(typeof WEIGHT_KEYS)[number], string> = {
+  weight_icp_fit: SCORE_CATEGORY_LABELS.icp_fit,
+  weight_scale_footprint: SCORE_CATEGORY_LABELS.scale_footprint,
+  weight_hiring_growth: SCORE_CATEGORY_LABELS.hiring_growth,
+  weight_financial_viability: SCORE_CATEGORY_LABELS.financial_viability,
+};
+
+type Draft = Omit<IcpProfileRow, "id"> & { id: string | null; clientKey: string };
+
+function rowToDraft(row: IcpProfileRow): Draft {
+  return { ...row, clientKey: row.id };
+}
+
+function blankDraft(): Draft {
+  const clientKey = `new-${Math.random().toString(36).slice(2)}`;
+  return {
+    id: null,
+    clientKey,
+    icp_name: "New ICP",
+    weight_icp_fit: 25,
+    weight_scale_footprint: 25,
+    weight_hiring_growth: 25,
+    weight_financial_viability: 25,
+    target_sectors: [],
+    revenue_bands_usd: "[]",
+    headcount_bands: "[]",
+    fit_rules: "[]",
+  };
+}
+
+export function ConfigWorkspace({
+  profiles,
+  taxonomy,
+}: {
+  profiles: IcpProfileRow[];
+  taxonomy: SectorTaxonomyRow[];
+}) {
+  const router = useRouter();
+  const [drafts, setDrafts] = React.useState<Draft[]>(() => profiles.map(rowToDraft));
+  const [activeTab, setActiveTab] = React.useState<string>(drafts[0]?.clientKey ?? "");
+  const [pendingKey, setPendingKey] = React.useState<string | null>(null);
+  const [pendingSectorId, setPendingSectorId] = React.useState<string | null>(null);
+
+  // Reset local drafts when the server gives us fresh rows (after a
+  // save/delete triggers revalidatePath + router.refresh()) — adjusting
+  // state during render rather than in an effect avoids an extra render pass.
+  const [syncedProfiles, setSyncedProfiles] = React.useState(profiles);
+  if (profiles !== syncedProfiles) {
+    setSyncedProfiles(profiles);
+    setDrafts(profiles.map(rowToDraft));
+  }
+
+  const distinctSectors = React.useMemo(
+    () => Array.from(new Set(taxonomy.map((t) => t.sector))),
+    [taxonomy],
   );
-  const [tierA, setTierA] = React.useState(82);
-  const [tierB, setTierB] = React.useState(68);
-  const [repullWindow, setRepullWindow] = React.useState(90);
-  const [fxRate, setFxRate] = React.useState(0.79);
-  const [contactPullRule, setContactPullRule] = React.useState("manual");
-  const [prices, setPrices] = React.useState({ firecrawl: 0.05, exa: 0.03, llm: 0.08 });
 
-  function updateWeight(icpId: string, key: keyof IcpProfile["weights"], value: number) {
-    setWeights((prev) => ({ ...prev, [icpId]: { ...prev[icpId], [key]: value } }));
+  function updateDraft(clientKey: string, patch: Partial<Draft>) {
+    setDrafts((prev) => prev.map((d) => (d.clientKey === clientKey ? { ...d, ...patch } : d)));
   }
 
-  function sumFor(icpId: string) {
-    return CATEGORY_KEYS.reduce((sum, k) => sum + (weights[icpId][k] || 0), 0);
+  function sumFor(draft: Draft) {
+    return WEIGHT_KEYS.reduce((sum, k) => sum + (draft[k] || 0), 0);
   }
 
-  function saveIcp(icp: IcpProfile) {
-    if (sumFor(icp.id) !== 100) {
-      toast.error("Weights must sum to 100", { description: `${icp.name} currently sums to ${sumFor(icp.id)}.` });
+  function addProfile() {
+    const draft = blankDraft();
+    setDrafts((prev) => [...prev, draft]);
+    setActiveTab(draft.clientKey);
+  }
+
+  function toggleSector(clientKey: string, sector: string, checked: boolean) {
+    setDrafts((prev) =>
+      prev.map((d) => {
+        if (d.clientKey !== clientKey) return d;
+        const next = checked ? Array.from(new Set([...d.target_sectors, sector])) : d.target_sectors.filter((s) => s !== sector);
+        return { ...d, target_sectors: next };
+      }),
+    );
+  }
+
+  function jsonIsValid(value: string) {
+    try {
+      JSON.parse(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function save(draft: Draft) {
+    const sum = sumFor(draft);
+    if (sum !== 100) {
+      toast.error("Weights must sum to 100", { description: `${draft.icp_name} currently sums to ${sum}.` });
       return;
     }
-    toast.success(`${icp.name} weights saved`, { description: "Applies on next score or re-score." });
+    for (const [label, value] of [
+      ["Revenue bands", draft.revenue_bands_usd],
+      ["Headcount bands", draft.headcount_bands],
+      ["Fit rules", draft.fit_rules],
+    ] as const) {
+      if (!jsonIsValid(value)) {
+        toast.error(`${label} is not valid JSON`);
+        return;
+      }
+    }
+
+    setPendingKey(draft.clientKey);
+    try {
+      const { id } = await saveIcpProfile({
+        id: draft.id,
+        icp_name: draft.icp_name,
+        weight_icp_fit: draft.weight_icp_fit,
+        weight_scale_footprint: draft.weight_scale_footprint,
+        weight_hiring_growth: draft.weight_hiring_growth,
+        weight_financial_viability: draft.weight_financial_viability,
+        target_sectors: draft.target_sectors,
+        revenue_bands_usd: draft.revenue_bands_usd,
+        headcount_bands: draft.headcount_bands,
+        fit_rules: draft.fit_rules,
+      });
+      toast.success(`${draft.icp_name} saved`, { description: "Applies on next score or re-score." });
+      if (!draft.id) setActiveTab(id);
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to save ICP profile", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setPendingKey(null);
+    }
   }
 
-  function saveGlobal() {
-    toast.success("Global config saved", { description: "Applies on next score or re-score, no new API spend." });
+  async function remove(draft: Draft) {
+    if (!draft.id) {
+      // Never saved — just drop the local draft.
+      setDrafts((prev) => prev.filter((d) => d.clientKey !== draft.clientKey));
+      setActiveTab((cur) => (cur === draft.clientKey ? (drafts[0]?.clientKey ?? "") : cur));
+      return;
+    }
+    if (!window.confirm(`Delete ${draft.icp_name}? This can't be undone.`)) return;
+
+    setPendingKey(draft.clientKey);
+    try {
+      await deleteIcpProfile(draft.id);
+      toast.success(`${draft.icp_name} deleted`);
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to delete ICP profile", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setPendingKey(null);
+    }
   }
+
+  async function toggleActive(row: SectorTaxonomyRow, active: boolean) {
+    setPendingSectorId(row.id);
+    try {
+      await setSectorTaxonomyActive(row.id, active);
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to update sector taxonomy", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setPendingSectorId(null);
+    }
+  }
+
+  const taxonomyBySector = React.useMemo(() => {
+    const map = new Map<string, SectorTaxonomyRow[]>();
+    for (const row of taxonomy) {
+      const list = map.get(row.sector) ?? [];
+      list.push(row);
+      map.set(row.sector, list);
+    }
+    return map;
+  }, [taxonomy]);
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Per-ICP weights</CardTitle>
-          <CardDescription>Weights must sum to 100 for each ICP before saving.</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Per-ICP weights</CardTitle>
+            <CardDescription>Weights must sum to 100 for each ICP before saving.</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={addProfile}>
+            <Plus className="size-4" /> New ICP profile
+          </Button>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue={ICP_PROFILES[0].id}>
-            <TabsList className="flex-wrap">
-              {ICP_PROFILES.map((p) => (
-                <TabsTrigger key={p.id} value={p.id}>
-                  {p.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {ICP_PROFILES.map((p) => {
-              const sum = sumFor(p.id);
-              const valid = sum === 100;
-              return (
-                <TabsContent key={p.id} value={p.id} className="mt-4 flex flex-col gap-4">
-                  <p className="text-sm text-muted-foreground">{p.description}</p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {CATEGORY_KEYS.map((key) => (
-                      <div key={key} className="space-y-1.5">
-                        <Label>{SCORE_CATEGORY_LABELS[key]}</Label>
-                        <div className="relative">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={weights[p.id][key]}
-                            onChange={(e) => updateWeight(p.id, key, Number(e.target.value))}
-                            className="pr-8"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+          {drafts.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              No ICP profiles yet. Add one to start scoring against real weights.
+            </p>
+          ) : (
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="flex-wrap">
+                {drafts.map((d) => (
+                  <TabsTrigger key={d.clientKey} value={d.clientKey}>
+                    {d.icp_name || "Untitled"}
+                    {!d.id && (
+                      <Badge variant="outline" className="ml-1.5 border-transparent bg-muted px-1 text-[10px]">
+                        new
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {drafts.map((d) => {
+                const sum = sumFor(d);
+                const valid = sum === 100;
+                const isPending = pendingKey === d.clientKey;
+                return (
+                  <TabsContent key={d.clientKey} value={d.clientKey} className="mt-4 flex flex-col gap-5">
+                    <div className="space-y-1.5">
+                      <Label>ICP name</Label>
+                      <Input
+                        value={d.icp_name}
+                        onChange={(e) => updateDraft(d.clientKey, { icp_name: e.target.value })}
+                        disabled={isPending}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {WEIGHT_KEYS.map((key) => (
+                        <div key={key} className="space-y-1.5">
+                          <Label>{CATEGORY_LABEL_BY_WEIGHT_KEY[key]}</Label>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={d[key]}
+                              onChange={(e) => updateDraft(d.clientKey, { [key]: Number(e.target.value) } as Partial<Draft>)}
+                              className="pr-8"
+                              disabled={isPending}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                          </div>
                         </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Target sectors</Label>
+                      <div className="flex flex-wrap gap-x-6 gap-y-2">
+                        {distinctSectors.map((sector) => (
+                          <label key={sector} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={d.target_sectors.includes(sector)}
+                              onCheckedChange={(checked) => toggleSector(d.clientKey, sector, checked === true)}
+                              disabled={isPending}
+                            />
+                            {sector}
+                          </label>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "gap-1.5 border-transparent",
-                        valid ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
-                      )}
-                    >
-                      {valid ? <CheckCircle2 className="size-3.5" /> : <AlertCircle className="size-3.5" />}
-                      Sum: {sum} / 100
-                    </Badge>
-                    <Button onClick={() => saveIcp(p)} disabled={!valid}>
-                      Save {p.name} weights
-                    </Button>
-                  </div>
-                </TabsContent>
-              );
-            })}
-          </Tabs>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Revenue bands (JSON)</Label>
+                        <Textarea
+                          value={d.revenue_bands_usd}
+                          onChange={(e) => updateDraft(d.clientKey, { revenue_bands_usd: e.target.value })}
+                          className="min-h-32 font-mono text-xs"
+                          disabled={isPending}
+                        />
+                        {!jsonIsValid(d.revenue_bands_usd) && (
+                          <p className="text-xs text-destructive">Not valid JSON.</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Headcount bands (JSON)</Label>
+                        <Textarea
+                          value={d.headcount_bands}
+                          onChange={(e) => updateDraft(d.clientKey, { headcount_bands: e.target.value })}
+                          className="min-h-32 font-mono text-xs"
+                          disabled={isPending}
+                        />
+                        {!jsonIsValid(d.headcount_bands) && (
+                          <p className="text-xs text-destructive">Not valid JSON.</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Fit rules (JSON)</Label>
+                        <Textarea
+                          value={d.fit_rules}
+                          onChange={(e) => updateDraft(d.clientKey, { fit_rules: e.target.value })}
+                          className="min-h-32 font-mono text-xs"
+                          disabled={isPending}
+                        />
+                        {!jsonIsValid(d.fit_rules) && <p className="text-xs text-destructive">Not valid JSON.</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "gap-1.5 border-transparent",
+                          valid ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {valid ? <CheckCircle2 className="size-3.5" /> : <AlertCircle className="size-3.5" />}
+                        Sum: {sum} / 100
+                      </Badge>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => remove(d)} disabled={isPending}>
+                          <Trash2 className="size-4" /> Delete
+                        </Button>
+                        <Button onClick={() => save(d)} disabled={!valid || isPending}>
+                          {isPending && <Loader2 className="size-4 animate-spin" />}
+                          Save {d.icp_name || "profile"}
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+                );
+              })}
+            </Tabs>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Global settings</CardTitle>
-          <CardDescription>Tier thresholds, re-pull window, FX rate, contact-pull rule and metered-service prices.</CardDescription>
+          <CardTitle>Sector taxonomy</CardTitle>
+          <CardDescription>Inactive sub-sectors are excluded from classification going forward.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label>Tier A threshold</Label>
-              <Input type="number" value={tierA} onChange={(e) => setTierA(Number(e.target.value))} />
-              <p className="text-xs text-muted-foreground">Total score ≥ this value</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tier B threshold</Label>
-              <Input type="number" value={tierB} onChange={(e) => setTierB(Number(e.target.value))} />
-              <p className="text-xs text-muted-foreground">Else tier C</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Re-pull window (days)</Label>
-              <Input type="number" value={repullWindow} onChange={(e) => setRepullWindow(Number(e.target.value))} />
-              <p className="text-xs text-muted-foreground">Skip re-redeem inside this window</p>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label>FX rate (USD → GBP)</Label>
-              <Input type="number" step="0.01" value={fxRate} onChange={(e) => setFxRate(Number(e.target.value))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Contact-pull rule</Label>
-              <Select value={contactPullRule} onValueChange={setContactPullRule}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">Manual selection only</SelectItem>
-                  <SelectItem value="auto_tier_a">Auto-pull for Tier A</SelectItem>
-                  <SelectItem value="auto_tier_ab">Auto-pull for Tier A & B</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div>
-            <p className="mb-3 text-sm font-medium">Metered service prices</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Firecrawl (£ / call)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={prices.firecrawl}
-                  onChange={(e) => setPrices((p) => ({ ...p, firecrawl: Number(e.target.value) }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Exa (£ / call)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={prices.exa}
-                  onChange={(e) => setPrices((p) => ({ ...p, exa: Number(e.target.value) }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">LLM (£ / 1k tokens)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={prices.llm}
-                  onChange={(e) => setPrices((p) => ({ ...p, llm: Number(e.target.value) }))}
-                />
+        <CardContent className="flex flex-col gap-5">
+          {Array.from(taxonomyBySector.entries()).map(([sector, rows], i) => (
+            <div key={sector}>
+              {i > 0 && <Separator className="mb-5" />}
+              <p className="mb-2 text-sm font-medium">{sector}</p>
+              <div className="flex flex-col gap-2">
+                {rows.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
+                    <span className={cn("text-sm", !row.active && "text-muted-foreground line-through")}>
+                      {row.sub_sector}
+                    </span>
+                    <Switch
+                      checked={row.active}
+                      onCheckedChange={(checked) => toggleActive(row, checked)}
+                      disabled={pendingSectorId === row.id}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-
-          <div className="flex justify-end">
-            <Button onClick={saveGlobal}>Save global config</Button>
-          </div>
+          ))}
+          {taxonomyBySector.size === 0 && (
+            <p className="py-10 text-center text-sm text-muted-foreground">No sector taxonomy configured yet.</p>
+          )}
         </CardContent>
       </Card>
     </div>

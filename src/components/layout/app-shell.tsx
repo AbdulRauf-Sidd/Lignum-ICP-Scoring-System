@@ -9,12 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CURRENT_USER } from "@/lib/constants";
-import { COMPANIES } from "@/lib/mock/data";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  triageCount,
+}: {
+  children: React.ReactNode;
+  triageCount: number;
+}) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
-
-  const triageCount = COMPANIES.filter((c) => c.status === "triage").length;
 
   const counts = { triage: triageCount };
 
