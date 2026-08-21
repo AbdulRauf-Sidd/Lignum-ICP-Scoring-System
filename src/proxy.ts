@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const ADMIN_ONLY_PREFIXES = ["/accounts", "/admin", "/usage", "/analytics"];
+const ADMIN_ONLY_PREFIXES = ["/accounts", "/admin"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

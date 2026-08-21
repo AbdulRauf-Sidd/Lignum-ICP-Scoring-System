@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, Layers, PoundSterling } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,11 +40,11 @@ export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {actionEntries.map(([action, count]) => (
-          <StatCard key={action} icon={Layers} label={actionLabel(action)} value={count.toString()} sub="native units" />
+          <StatTile key={action} label={actionLabel(action)} value={count} />
         ))}
-        <StatCard icon={PoundSterling} label="Metered cost" value={formatUsd(summary.totalCostUsd)} sub="across all runs" />
+        <StatTile label="Metered cost" value={formatUsd(summary.totalCostUsd)} tone="text-primary" />
       </div>
 
       <Card>
@@ -195,29 +195,11 @@ export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
   );
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: typeof Layers;
-  label: string;
-  value: string;
-  sub: string;
-}) {
+function StatTile({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 px-4 py-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </div>
-        <div>
-          <p className="text-xl font-semibold leading-none">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground capitalize">{label}</p>
-          <p className="text-[11px] text-muted-foreground/70">{sub}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border px-3 py-2.5">
+      <p className={`text-2xl font-semibold leading-none ${tone ?? ""}`}>{value}</p>
+      <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+    </div>
   );
 }

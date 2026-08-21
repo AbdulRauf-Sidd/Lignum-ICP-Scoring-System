@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpDown, Archive, ArchiveRestore, Search, X } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
+import { ArrowUpDown, Archive, ArchiveRestore, Search, TriangleAlert, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ICP_NAMES, SECTORS } from "@/lib/constants";
 import { ScoreRing } from "@/components/shared/score-display";
-import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
+import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 import type { Company } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -28,14 +26,38 @@ import { toast } from "sonner";
 
 type SortKey = "score" | "confidence" | "name" | "enrichedAt";
 type ExportedFilter = "all" | "exported" | "not_exported";
+type View = "scorecard" | "detail";
 
 const PAGE_SIZE = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+interface IcpStats {
+  count: number;
+  avgScore: number | null;
+  tierA: number;
+  tierB: number;
+  tierC: number;
+  weak: number;
+}
+
+function computeStats(list: Company[]): IcpStats {
+  const count = list.length;
+  const scores = list.map((c) => c.score).filter((s): s is number => s !== null);
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  return {
+    count,
+    avgScore,
+    tierA: list.filter((c) => c.tier === "A").length,
+    tierB: list.filter((c) => c.tier === "B").length,
+    tierC: list.filter((c) => c.tier === "C").length,
+    weak: list.filter((c) => c.matchFlag === "weak" || c.matchFlag === "no_match").length,
+  };
+}
+
 export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const scoredCompanies = companies;
-  const [tab, setTab] = React.useState<string>(ICP_NAMES[0]);
-  const [sector, setSector] = React.useState<string>("all");
+  const [tab, setTab] = React.useState<string>("all");
+  const [view, setView] = React.useState<View>("scorecard");
   const [subSector, setSubSector] = React.useState<string>("all");
   const [tier, setTier] = React.useState<"all" | "A" | "B" | "C">("all");
   const [exportedFilter, setExportedFilter] = React.useState<ExportedFilter>("all");
@@ -48,7 +70,23 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const [showArchived, setShowArchived] = React.useState(false);
   const [page, setPage] = React.useState(1);
 
-  const subSectorOptions = sector === "all" ? [] : SECTORS.find((s) => s.sector === sector)?.subSectors ?? [];
+  const subSectorOptions = tab === "all" ? [] : SECTORS.find((s) => s.sector === tab)?.subSectors ?? [];
+
+  const notArchived = React.useMemo(
+    () => scoredCompanies.filter((c) => showArchived || !archived.has(c.id)),
+    [scoredCompanies, archived, showArchived],
+  );
+
+  const icpStats = React.useMemo(() => {
+    const byIcp = new Map<string, IcpStats>();
+    for (const name of ICP_NAMES) {
+      byIcp.set(name, computeStats(notArchived.filter((c) => c.sector === name)));
+    }
+    byIcp.set("all", computeStats(notArchived));
+    return byIcp;
+  }, [notArchived]);
+
+  const activeStats = icpStats.get(tab) ?? computeStats([]);
 
   function toggleArchive(id: string) {
     setArchived((prev) => {
@@ -77,8 +115,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const enrichedEndMs = enrichedAtEnd ? new Date(enrichedAtEnd).getTime() + DAY_MS - 1 : null;
 
   const filtered = scoredCompanies
-    .filter((c) => c.icp === tab)
-    .filter((c) => sector === "all" || c.sector === sector)
+    .filter((c) => tab === "all" || c.sector === tab)
     .filter((c) => subSector === "all" || c.subSector === subSector)
     .filter((c) => tier === "all" || c.tier === tier)
     .filter((c) => (exportedFilter === "all" ? true : exportedFilter === "exported" ? c.exported : !c.exported))
@@ -107,7 +144,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const paged = sorted.slice((effectivePage - 1) * PAGE_SIZE, effectivePage * PAGE_SIZE);
 
   const activeFilterCount = [
-    sector !== "all",
     subSector !== "all",
     tier !== "all",
     exportedFilter !== "all",
@@ -117,7 +153,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   ].filter(Boolean).length;
 
   function resetFilters() {
-    setSector("all");
     setSubSector("all");
     setTier("all");
     setExportedFilter("all");
@@ -127,114 +162,142 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
     setPage(1);
   }
 
+  const columnCount = view === "scorecard" ? 13 : 12;
+
   return (
     <div>
-      <Tabs
-        value={tab}
-        onValueChange={(v) => {
-          setTab(v);
-          setPage(1);
-        }}
-        className="mb-4"
-      >
-        <TabsList className="flex-wrap">
-          {ICP_NAMES.map((name) => (
-            <TabsTrigger key={name} value={name}>
-              {name}
-              <Badge variant="secondary" className="ml-1.5 h-5 px-1 text-[10px]">
-                {scoredCompanies.filter((c) => c.icp === name && !archived.has(c.id)).length}
-              </Badge>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      <Card className="mb-4">
-        <CardContent className="flex flex-wrap items-end gap-3 pt-6">
-          <div className="relative w-full max-w-56">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search company"
-              className="pl-8"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
+      {/* ICP profile tabs — bordered cards with count, avg score and a tier split bar */}
+      <div className="mb-4 flex flex-nowrap gap-2.5 overflow-x-auto pb-1">
+        {[...ICP_NAMES, "all"].map((name) => {
+          const stats = icpStats.get(name) ?? computeStats([]);
+          const active = tab === name;
+          const isAll = name === "all";
+          const tierTotal = stats.tierA + stats.tierB + stats.tierC || 1;
+          return (
+            <button
+              key={name}
+              onClick={() => {
+                setTab(name);
+                setSubSector("all");
                 setPage(1);
               }}
-            />
-          </div>
-          <FilterSelect
-            label="Sector"
-            value={sector}
-            onChange={(v) => {
-              setSector(v);
-              setSubSector("all");
+              className={cn(
+                "flex shrink-0 items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
+                active ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-md font-heading text-xs font-bold",
+                  active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {isAll ? "Σ" : name.charAt(0)}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">{isAll ? "All profiles" : name}</span>
+                <span className="mt-1 flex items-center gap-1.5">
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {stats.count} {!isAll && stats.avgScore !== null && `· avg ${stats.avgScore}`}
+                  </span>
+                  {!isAll && stats.count > 0 && (
+                    <span className="flex h-1 w-14 overflow-hidden rounded-full">
+                      <span className="h-full bg-emerald-500" style={{ width: `${(stats.tierA / tierTotal) * 100}%` }} />
+                      <span className="h-full bg-primary" style={{ width: `${(stats.tierB / tierTotal) * 100}%` }} />
+                      <span className="h-full bg-slate-400" style={{ width: `${(stats.tierC / tierTotal) * 100}%` }} />
+                    </span>
+                  )}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Stat tiles for the active profile */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <StatTile label={tab === "all" ? "All accounts" : "In this profile"} value={activeStats.count} sublabel={tab === "all" ? undefined : tab} />
+        <StatTile label="Tier A" value={activeStats.tierA} tone="text-emerald-600 dark:text-emerald-400" sublabel="priority" />
+        <StatTile label="Tier B" value={activeStats.tierB} tone="text-primary" sublabel="qualify" />
+        <StatTile label="Avg ICP score" value={activeStats.avgScore ?? "—"} sublabel="of 100" />
+        <StatTile label="Weak matches" value={activeStats.weak} tone={activeStats.weak > 0 ? "text-destructive" : undefined} sublabel="review" />
+      </div>
+
+      <div className="mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
+        <div className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/40 p-1">
+          <button
+            onClick={() => setView("scorecard")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              view === "scorecard" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Scorecard
+          </button>
+          <button
+            onClick={() => setView("detail")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              view === "detail" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Full detail
+          </button>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/40 p-1">
+          {(
+            [
+              { value: "all" as const, label: "All", count: activeStats.count },
+              { value: "A" as const, label: "A", count: activeStats.tierA },
+              { value: "B" as const, label: "B", count: activeStats.tierB },
+              { value: "C" as const, label: "C", count: activeStats.tierC },
+            ]
+          ).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => {
+                setTier(t.value);
+                setPage(1);
+              }}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-colors",
+                tier === t.value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t.label} {t.count}
+            </button>
+          ))}
+        </div>
+
+        <FilterSelect
+          label="Sub-sector"
+          hideLabel
+          width="w-40"
+          value={subSector}
+          onChange={(v) => {
+            setSubSector(v);
+            setPage(1);
+          }}
+          disabled={tab === "all"}
+          options={[{ value: "all", label: "All sub-sectors" }, ...subSectorOptions.map((s) => ({ value: s, label: s }))]}
+        />
+
+        <div className="relative w-40 shrink-0">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search company"
+            className="pl-8"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
               setPage(1);
             }}
-            options={[{ value: "all", label: "All sectors" }, ...SECTORS.map((s) => ({ value: s.sector, label: s.sector }))]}
           />
-          <FilterSelect
-            label="Sub-sector"
-            value={subSector}
-            onChange={(v) => {
-              setSubSector(v);
-              setPage(1);
-            }}
-            disabled={sector === "all"}
-            options={[{ value: "all", label: "All sub-sectors" }, ...subSectorOptions.map((s) => ({ value: s, label: s }))]}
-          />
-          <FilterSelect
-            label="Tier"
-            value={tier}
-            onChange={(v) => {
-              setTier(v as "all" | "A" | "B" | "C");
-              setPage(1);
-            }}
-            options={[
-              { value: "all", label: "All tiers" },
-              { value: "A", label: "Tier A" },
-              { value: "B", label: "Tier B" },
-              { value: "C", label: "Tier C" },
-            ]}
-          />
-          <FilterSelect
-            label="Exported"
-            value={exportedFilter}
-            onChange={(v) => {
-              setExportedFilter(v as ExportedFilter);
-              setPage(1);
-            }}
-            options={[
-              { value: "all", label: "All" },
-              { value: "exported", label: "Exported" },
-              { value: "not_exported", label: "Not exported" },
-            ]}
-          />
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Enriched at</Label>
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="date"
-                className="w-36"
-                value={enrichedAtStart}
-                onChange={(e) => {
-                  setEnrichedAtStart(e.target.value);
-                  setPage(1);
-                }}
-              />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input
-                type="date"
-                className="w-36"
-                value={enrichedAtEnd}
-                onChange={(e) => {
-                  setEnrichedAtEnd(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 pb-1.5">
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <div className="flex items-center gap-2">
             <Switch
               id="show-archived"
               checked={showArchived}
@@ -243,31 +306,84 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
                 setPage(1);
               }}
             />
-            <Label htmlFor="show-archived" className="text-sm font-normal text-muted-foreground">
+            <Label htmlFor="show-archived" className="whitespace-nowrap text-sm font-normal text-muted-foreground">
               Show archived
             </Label>
           </div>
-          {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground">
-              <X /> Clear filters
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {sorted.length} of {activeStats.count} in {tab === "all" ? "all profiles" : tab}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto">
+        <FilterSelect
+          label="Exported"
+          width="w-32"
+          value={exportedFilter}
+          onChange={(v) => {
+            setExportedFilter(v as ExportedFilter);
+            setPage(1);
+          }}
+          options={[
+            { value: "all", label: "All" },
+            { value: "exported", label: "Exported" },
+            { value: "not_exported", label: "Not exported" },
+          ]}
+        />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Label className="whitespace-nowrap text-xs text-muted-foreground">Enriched</Label>
+          <Input
+            type="date"
+            className="w-36"
+            value={enrichedAtStart}
+            onChange={(e) => {
+              setEnrichedAtStart(e.target.value);
+              setPage(1);
+            }}
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input
+            type="date"
+            className="w-36"
+            value={enrichedAtEnd}
+            onChange={(e) => {
+              setEnrichedAtEnd(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        {activeFilterCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={resetFilters} className="shrink-0 text-muted-foreground">
+            <X /> Clear filters
+          </Button>
+        )}
+      </div>
 
       <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
               <SortableHead label="Company" active={sortKey === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
-              <TableHead>Sector / sub-sector</TableHead>
+              <TableHead>Sector</TableHead>
+              {view === "scorecard" ? (
+                <>
+                  <TableHead>ICP</TableHead>
+                  <TableHead>Scale</TableHead>
+                  <TableHead>Hiring</TableHead>
+                  <TableHead>Financial</TableHead>
+                </>
+              ) : (
+                <>
+                  <TableHead>Revenue</TableHead>
+                  <TableHead>Headcount</TableHead>
+                </>
+              )}
+              <SortableHead label="Confidence" active={sortKey === "confidence"} desc={sortDesc} onClick={() => toggleSort("confidence")} />
               <SortableHead label="Score" active={sortKey === "score"} desc={sortDesc} onClick={() => toggleSort("score")} />
               <TableHead>Tier</TableHead>
-              <SortableHead label="Confidence" active={sortKey === "confidence"} desc={sortDesc} onClick={() => toggleSort("confidence")} />
-              <TableHead>Match</TableHead>
-              <TableHead>Revenue</TableHead>
-              <TableHead>Headcount</TableHead>
               <SortableHead label="Enriched" active={sortKey === "enrichedAt"} desc={sortDesc} onClick={() => toggleSort("enrichedAt")} />
+              <TableHead>Match</TableHead>
               <TableHead>Exported</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -277,13 +393,14 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
               <TargetListRow
                 key={c.id}
                 company={c}
+                view={view}
                 archived={archived.has(c.id)}
                 onToggleArchive={() => toggleArchive(c.id)}
               />
             ))}
             {sorted.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={columnCount} className="py-10 text-center text-sm text-muted-foreground">
                   No companies match these filters.
                 </TableCell>
               </TableRow>
@@ -324,40 +441,143 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   );
 }
 
+const AVATAR_STYLES = [
+  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
+  "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
+];
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function hashIndex(key: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return hash % mod;
+}
+
+function CompanyAvatar({ id, name }: { id: string; name: string }) {
+  const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
+  return (
+    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-bold", style)}>
+      {initials(name)}
+    </span>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  tone,
+  sublabel,
+}: {
+  label: string;
+  value: number | string;
+  tone?: string;
+  sublabel?: string;
+}) {
+  return (
+    <div className="rounded-lg border px-3 py-2.5">
+      <p className={cn("text-2xl font-semibold leading-none", tone)}>{value}</p>
+      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+        {sublabel && (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold tracking-normal text-muted-foreground normal-case">
+            {sublabel}
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function CategoryMeter({ category }: { category: Company["scoringBreakdown"][number] | undefined }) {
+  if (!category || category.excluded || category.subScore === null) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-sm font-medium tabular-nums">{category.subScore}</span>
+      <span className="block h-1 w-14 overflow-hidden rounded-full bg-muted">
+        <span className="block h-full rounded-full bg-primary" style={{ width: `${category.subScore}%` }} />
+      </span>
+    </div>
+  );
+}
+
 function TargetListRow({
   company,
+  view,
   archived,
   onToggleArchive,
 }: {
   company: Company;
+  view: View;
   archived: boolean;
   onToggleArchive: () => void;
 }) {
+  const byKey = new Map(company.scoringBreakdown.map((c) => [c.key, c]));
   return (
     <TableRow className={cn(archived && "opacity-50")}>
       <TableCell>
-        <Link href={`/target-list/${company.id}`} className="font-medium hover:underline">
-          {company.name}
-        </Link>
-        <p className="text-xs text-muted-foreground">{company.domain}</p>
+        <div className="flex items-center gap-2.5">
+          <CompanyAvatar id={company.id} name={company.name} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Link href={`/target-list/${company.id}`} className="truncate font-medium hover:underline">
+                {company.name}
+              </Link>
+              {(company.matchFlag === "weak" || company.matchFlag === "no_match") && (
+                <TriangleAlert className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{company.domain}</p>
+          </div>
+        </div>
       </TableCell>
       <TableCell>
-        <p className="text-sm">{company.sector}</p>
-        <p className="text-xs text-muted-foreground">{company.subSector}</p>
+        <SectorBadge sector={company.sector} />
+        <p className="mt-1 text-xs text-muted-foreground">{company.subSector}</p>
       </TableCell>
+      {view === "scorecard" ? (
+        <>
+          <TableCell>
+            <CategoryMeter category={byKey.get("icp_fit")} />
+          </TableCell>
+          <TableCell>
+            <CategoryMeter category={byKey.get("scale_footprint")} />
+          </TableCell>
+          <TableCell>
+            <CategoryMeter category={byKey.get("hiring_growth")} />
+          </TableCell>
+          <TableCell>
+            <CategoryMeter category={byKey.get("financial_viability")} />
+          </TableCell>
+        </>
+      ) : (
+        <>
+          <TableCell className="tabular-nums text-muted-foreground">{formatUsdCompact(company.revenueUsd)}</TableCell>
+          <TableCell className="tabular-nums text-muted-foreground">{formatNumber(company.headcount)}</TableCell>
+        </>
+      )}
+      <TableCell className="tabular-nums">{company.confidence}%</TableCell>
       <TableCell>
         <ScoreRing score={company.score} size={38} />
       </TableCell>
       <TableCell>
         <TierBadge tier={company.tier} />
       </TableCell>
-      <TableCell className="tabular-nums">{company.confidence}%</TableCell>
+      <TableCell className="text-muted-foreground">{formatDate(company.lastEnrichedAt)}</TableCell>
       <TableCell>
         <MatchFlagBadge flag={company.matchFlag} />
       </TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">{formatUsdCompact(company.revenueUsd)}</TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">{formatNumber(company.headcount)}</TableCell>
-      <TableCell className="text-muted-foreground">{formatDate(company.lastEnrichedAt)}</TableCell>
       <TableCell>
         {company.exported ? (
           <Badge variant="outline" className="border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
@@ -403,18 +623,22 @@ function FilterSelect({
   onChange,
   options,
   disabled,
+  width = "w-36",
+  hideLabel = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   disabled?: boolean;
+  width?: string;
+  hideLabel?: boolean;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <div className="flex shrink-0 items-center gap-1.5">
+      {!hideLabel && <Label className="whitespace-nowrap text-xs text-muted-foreground">{label}</Label>}
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger className="w-44">
+        <SelectTrigger className={width} aria-label={hideLabel ? label : undefined}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

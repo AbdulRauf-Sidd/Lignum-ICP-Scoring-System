@@ -2,12 +2,11 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { GitMerge, HelpCircle, Check, X, MapPin, Globe, Loader2 } from "lucide-react";
+import { Check, X, MapPin, Globe, Loader2, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -15,11 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { SECTORS } from "@/lib/constants";
-import { ScoreBar } from "@/components/shared/score-display";
-import { MatchFlagBadge } from "@/components/shared/badges";
+import { ScoreRing } from "@/components/shared/score-display";
+import { TierBadge, SectorBadge } from "@/components/shared/badges";
+import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,21 +25,36 @@ import { approveCompany, confirmEntityResolution } from "@/app/(dashboard)/triag
 
 type Resolution = "pending" | "approved" | "rejected" | "resolving";
 
-const REASON_META: Record<
-  NonNullable<TriageReason>,
-  { label: string; icon: typeof GitMerge; description: string }
-> = {
-  entity_ambiguous: {
-    label: "Entity ambiguous",
-    icon: GitMerge,
-    description: "The match score didn't clear the threshold, or several strong candidates exist.",
-  },
-  low_confidence_sector: {
-    label: "Low-confidence sector",
-    icon: HelpCircle,
-    description: "The classifier's confidence fell below the approval threshold.",
-  },
-};
+const AVATAR_STYLES = [
+  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
+  "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
+];
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function hashIndex(key: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return hash % mod;
+}
+
+function CompanyAvatar({ id, name }: { id: string; name: string }) {
+  const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
+  return (
+    <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-md text-sm font-bold", style)}>
+      {initials(name)}
+    </span>
+  );
+}
 
 export function TriageWorkspace({ companies }: { companies: Company[] }) {
   const router = useRouter();
@@ -55,22 +68,15 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
   const [filter, setFilter] = React.useState<"all" | NonNullable<TriageReason>>(
     initialReason ?? "all",
   );
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
 
   const filtered = items.filter((c) => filter === "all" || c.triageReason === filter);
-
-  // Derived rather than synced via effect: falls back to the first item in
-  // the current filter whenever the explicit selection isn't in view.
-  const effectiveSelectedId = filtered.some((c) => c.id === selectedId) ? selectedId : (filtered[0]?.id ?? null);
 
   const counts = {
     all: items.length,
     entity_ambiguous: items.filter((c) => c.triageReason === "entity_ambiguous").length,
     low_confidence_sector: items.filter((c) => c.triageReason === "low_confidence_sector").length,
   };
-
-  const selected = items.find((c) => c.id === effectiveSelectedId) ?? null;
 
   async function approve(company: Company) {
     const edit = edits[company.id];
@@ -81,7 +87,6 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
       await approveCompany(company.id, sector, subSector);
       setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
       toast.success(`${company.name} approved`, { description: "Moved to the target list." });
-      selectNext(company.id);
       router.refresh();
     } catch (err) {
       toast.error("Approve failed", { description: err instanceof Error ? err.message : "Unknown error" });
@@ -109,7 +114,6 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
       toast.success(`Entity confirmed for ${company.name}`, {
         description: "Reprocessing — it'll return to triage for approval once scoring finishes, or leave the queue if nothing else needs review.",
       });
-      selectNext(company.id);
       router.refresh();
     } catch (err) {
       toast.error("Couldn't confirm entity", { description: err instanceof Error ? err.message : "Unknown error" });
@@ -118,22 +122,29 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     }
   }
 
-  function selectNext(currentId: string) {
-    const remaining = filtered.filter(
-      (c) => c.id !== currentId && resolutions[c.id] !== "approved" && resolutions[c.id] !== "resolving",
-    );
-    setSelectedId(remaining[0]?.id ?? null);
-  }
-
   return (
     <div>
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
-          <TabsTrigger value="entity_ambiguous">Entity ambiguous ({counts.entity_ambiguous})</TabsTrigger>
-          <TabsTrigger value="low_confidence_sector">Low-confidence sector ({counts.low_confidence_sector})</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="mb-6 grid grid-cols-3 gap-3">
+        {(
+          [
+            { key: "all" as const, label: "Total in triage", count: counts.all },
+            { key: "entity_ambiguous" as const, label: "Entity ambiguous", count: counts.entity_ambiguous },
+            { key: "low_confidence_sector" as const, label: "Low-confidence sector", count: counts.low_confidence_sector },
+          ]
+        ).map((tile) => (
+          <button
+            key={tile.key}
+            onClick={() => setFilter(tile.key)}
+            className={cn(
+              "rounded-lg border px-3 py-2.5 text-left transition-colors",
+              filter === tile.key ? "border-primary bg-primary/5" : "hover:bg-accent",
+            )}
+          >
+            <p className="text-2xl font-semibold leading-none">{tile.count}</p>
+            <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{tile.label}</p>
+          </button>
+        ))}
+      </div>
 
       {filtered.length === 0 ? (
         <Card>
@@ -142,87 +153,29 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
-          <ScrollArea className="h-[calc(100svh-260px)] rounded-lg border">
-            <div className="flex flex-col divide-y">
-              {filtered.map((c) => {
-                const resolution = resolutions[c.id] ?? "pending";
-                const meta = c.triageReason ? REASON_META[c.triageReason] : null;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedId(c.id)}
-                    className={cn(
-                      "flex w-full flex-col gap-1.5 px-3 py-3 text-left transition-colors hover:bg-accent",
-                      effectiveSelectedId === c.id && "bg-accent",
-                      (resolution === "approved" || resolution === "resolving") && "opacity-50",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium">{c.name}</p>
-                      {resolution === "approved" && (
-                        <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          Approved
-                        </Badge>
-                      )}
-                      {resolution === "resolving" && (
-                        <Badge variant="outline" className="gap-1 border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                          <Loader2 className="size-3 animate-spin" /> Resolving
-                        </Badge>
-                      )}
-                      {resolution === "rejected" && (
-                        <Badge variant="outline" className="border-transparent bg-destructive/10 text-destructive">
-                          Rejected
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">{c.domain}</p>
-                    {meta && (
-                      <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <meta.icon className="size-3.5" />
-                        {meta.label}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </ScrollArea>
-
-          <div>
-            {selected ? (
-              <TriageDetail
-                key={selected.id}
-                company={selected}
-                resolution={resolutions[selected.id] ?? "pending"}
-                edit={edits[selected.id]}
-                onEditChange={(sector, subSector) =>
-                  setEdits((prev) => ({ ...prev, [selected.id]: { sector, subSector } }))
-                }
-                candidateSelection={candidateSelections[selected.id]}
-                onCandidateSelect={(id) =>
-                  setCandidateSelections((prev) => ({ ...prev, [selected.id]: id }))
-                }
-                onApprove={() => approve(selected)}
-                onReject={() => reject(selected)}
-                onConfirmEntity={() => confirmEntity(selected)}
-                isPending={pendingId === selected.id}
-              />
-            ) : (
-              <Card>
-                <CardContent className="py-16 text-center text-sm text-muted-foreground">
-                  Select a company from the list.
-                </CardContent>
-              </Card>
-            )}
-          </div>
+        <div className="flex flex-col gap-4">
+          {filtered.map((c) => (
+            <TriageCard
+              key={c.id}
+              company={c}
+              resolution={resolutions[c.id] ?? "pending"}
+              edit={edits[c.id]}
+              onEditChange={(sector, subSector) => setEdits((prev) => ({ ...prev, [c.id]: { sector, subSector } }))}
+              candidateSelection={candidateSelections[c.id]}
+              onCandidateSelect={(id) => setCandidateSelections((prev) => ({ ...prev, [c.id]: id }))}
+              onApprove={() => approve(c)}
+              onReject={() => reject(c)}
+              onConfirmEntity={() => confirmEntity(c)}
+              isPending={pendingId === c.id}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function TriageDetail({
+function TriageCard({
   company,
   resolution,
   edit,
@@ -245,161 +198,176 @@ function TriageDetail({
   onConfirmEntity: () => void;
   isPending: boolean;
 }) {
-  const meta = company.triageReason ? REASON_META[company.triageReason] : null;
   const sector = edit?.sector ?? company.proposedSector ?? "";
   const subSector = edit?.subSector ?? company.proposedSubSector ?? "";
   const subSectorOptions = SECTORS.find((s) => s.sector === sector)?.subSectors ?? [];
   const resolved = resolution !== "pending";
 
+  const warnings: string[] = [];
+  if (company.triageReason === "entity_ambiguous") {
+    warnings.push(`${company.candidateEntities.length} candidate match${company.candidateEntities.length === 1 ? "" : "es"}`);
+  }
+  if (company.triageReason === "low_confidence_sector") {
+    warnings.push("Low classification confidence");
+  }
+  if (company.matchFlag === "weak") warnings.push("Weak ICP match");
+  if (company.matchFlag === "no_match") warnings.push("No ICP match");
+
+  const flagged = warnings.length > 0 && !resolved;
+
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-6 pt-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">{company.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {company.domain}
-              {company.country ? ` · ${company.country}` : ""}
-            </p>
+    <Card className={cn(flagged && "border-amber-500/50")}>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <CompanyAvatar id={company.id} name={company.name} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold">{company.name}</h3>
+                <span className="text-sm text-muted-foreground">{company.domain}</span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <SectorBadge sector={sector || company.sector} />
+                {subSector && <span className="text-xs text-muted-foreground">{subSector}</span>}
+                <Badge variant="outline" className="border-transparent bg-muted text-[11px] text-muted-foreground">
+                  Sector {company.classificationConfidence ?? "—"}%
+                </Badge>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {formatUsdCompact(company.revenueUsd)} rev · {formatNumber(company.headcount)} staff
+                {company.country ? ` · ${company.country}` : ""}
+              </p>
+            </div>
           </div>
-          {meta && (
-            <Badge variant="outline" className="gap-1.5 border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <meta.icon className="size-3.5" /> {meta.label}
-            </Badge>
-          )}
+
+          <div className="flex shrink-0 items-center gap-5">
+            <div className="text-right">
+              <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Score</p>
+              <div className="mt-1 flex items-center gap-1.5">
+                <ScoreRing score={company.score} size={30} />
+                <TierBadge tier={company.tier} />
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Confidence</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums">
+                {company.confidence !== null ? `${company.confidence}%` : "—"}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {meta && <p className="-mt-3 text-sm text-muted-foreground">{company.oneLineReason}</p>}
-
-        <Separator />
-
-        {company.triageReason === "entity_ambiguous" ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm font-medium">Which company is this?</p>
-            <div className="flex flex-col gap-2">
-              {company.candidateEntities.map((cand) => (
-                <button
-                  key={cand.id}
-                  disabled={resolved || isPending}
-                  onClick={() => onCandidateSelect(cand.id)}
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                    candidateSelection === cand.id ? "border-primary bg-primary/5" : "hover:bg-accent",
-                    resolved && "opacity-60",
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{cand.name}</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Globe className="size-3" /> {cand.domain}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="size-3" /> {cand.location}
-                      </span>
-                      <span className="capitalize">source: {cand.source}</span>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="shrink-0">
-                    {cand.matchScore}% match
-                  </Badge>
-                </button>
-              ))}
-            </div>
-            {!resolved && (
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={onReject} disabled={isPending}>
-                  <X /> Reject
-                </Button>
-                <Button onClick={onConfirmEntity} disabled={isPending}>
-                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
-                </Button>
-              </div>
-            )}
+        {warnings.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {warnings.map((w) => (
+              <Badge key={w} variant="outline" className="gap-1 border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="size-3" /> {w}
+              </Badge>
+            ))}
           </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Sector</Label>
-                <Select
-                  disabled={resolved || isPending}
-                  value={sector}
-                  onValueChange={(v) => onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SECTORS.map((s) => (
-                      <SelectItem key={s.sector} value={s.sector}>
-                        {s.sector}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Sub-sector</Label>
-                <Select disabled={resolved || isPending} value={subSector} onValueChange={(v) => onEditChange(sector, v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subSectorOptions.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        )}
 
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <span className="text-muted-foreground">
-                Classification confidence <span className="font-medium text-foreground">{company.classificationConfidence}%</span>
-              </span>
-              <span className="text-muted-foreground">
-                ICP <span className="font-medium text-foreground">{company.icp}</span>
-              </span>
-              <span className="text-muted-foreground">
-                Match flag <MatchFlagBadge flag={company.matchFlag} />
-              </span>
-            </div>
+        {resolution === "approved" && (
+          <Badge variant="outline" className="w-fit border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            Approved — now on the target list
+          </Badge>
+        )}
+        {resolution === "resolving" && (
+          <Badge variant="outline" className="w-fit gap-1 border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
+            <Loader2 className="size-3 animate-spin" /> Reprocessing — will return to triage if it still needs review
+          </Badge>
+        )}
+        {resolution === "rejected" && (
+          <Badge variant="outline" className="w-fit border-transparent bg-destructive/10 text-destructive">
+            Rejected — remains in triage
+          </Badge>
+        )}
 
-            {company.score !== null && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-medium">Score breakdown</p>
-                  <p className="text-lg font-semibold">{company.score}<span className="text-sm text-muted-foreground"> / 100</span></p>
+        {!resolved && company.triageReason === "entity_ambiguous" && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Which company is this?</p>
+            {company.candidateEntities.map((cand) => (
+              <button
+                key={cand.id}
+                disabled={isPending}
+                onClick={() => onCandidateSelect(cand.id)}
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  candidateSelection === cand.id ? "border-primary bg-primary/5" : "hover:bg-accent",
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{cand.name}</p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Globe className="size-3" /> {cand.domain}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MapPin className="size-3" /> {cand.location}
+                    </span>
+                    <span className="capitalize">source: {cand.source}</span>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-3">
-                  {company.scoringBreakdown.map((cat) => (
-                    <ScoreBar key={cat.key} label={cat.label} subScore={cat.subScore} weight={cat.weight} contribution={cat.contribution} excluded={cat.excluded} />
+                <Badge variant="outline" className="shrink-0">
+                  {cand.matchScore}% match
+                </Badge>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!resolved && company.triageReason === "low_confidence_sector" && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Sector</Label>
+              <Select
+                disabled={isPending}
+                value={sector}
+                onValueChange={(v) => onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SECTORS.map((s) => (
+                    <SelectItem key={s.sector} value={s.sector}>
+                      {s.sector}
+                    </SelectItem>
                   ))}
-                </div>
-              </div>
-            )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Sub-sector</Label>
+              <Select disabled={isPending} value={subSector} onValueChange={(v) => onEditChange(sector, v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {subSectorOptions.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
 
-            {!resolved && (
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={onReject} disabled={isPending}>
-                  <X /> Reject
-                </Button>
-                <Button onClick={onApprove} disabled={isPending}>
-                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Approve
-                </Button>
-              </div>
-            )}
-            {resolved && (
-              <p className="text-sm text-muted-foreground">
-                {resolution === "approved"
-                  ? "Approved — now on the target list."
-                  : resolution === "resolving"
-                    ? "Reprocessing — it'll come back here if it still needs review."
-                    : "Rejected — remains in triage."}
-              </p>
+        {!resolved && (
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button variant="outline" onClick={onReject} disabled={isPending}>
+              <X /> Reject
+            </Button>
+            {company.triageReason === "entity_ambiguous" ? (
+              <Button onClick={onConfirmEntity} disabled={isPending}>
+                {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
+              </Button>
+            ) : (
+              <Button onClick={onApprove} disabled={isPending}>
+                {isPending ? <Loader2 className="animate-spin" /> : <Check />} Approve
+              </Button>
             )}
           </div>
         )}

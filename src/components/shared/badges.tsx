@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { SECTORS } from "@/lib/constants";
 import type { CompanyStatus, MatchFlag, Tier } from "@/lib/types";
 
 const STATUS_STYLES: Record<CompanyStatus, string> = {
@@ -28,8 +29,8 @@ export function StatusBadge({ status }: { status: CompanyStatus }) {
 
 const TIER_STYLES: Record<NonNullable<Tier>, string> = {
   A: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  B: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  C: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-400",
+  B: "bg-primary/15 text-primary",
+  C: "bg-slate-500/15 text-slate-600 dark:text-slate-400",
 };
 
 export function TierBadge({ tier }: { tier: Tier }) {
@@ -58,6 +59,24 @@ export function MatchFlagBadge({ flag }: { flag: MatchFlag | null }) {
   return (
     <Badge variant="outline" className={cn("border-transparent font-medium", MATCH_STYLES[flag])}>
       {MATCH_LABELS[flag]}
+    </Badge>
+  );
+}
+
+const SECTOR_STYLES = [
+  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
+];
+
+export function SectorBadge({ sector, className }: { sector: string | null; className?: string }) {
+  if (!sector) return <span className="text-sm text-muted-foreground">—</span>;
+  const idx = SECTORS.findIndex((s) => s.sector === sector);
+  const style = SECTOR_STYLES[idx >= 0 ? idx % SECTOR_STYLES.length : 0];
+  return (
+    <Badge variant="outline" className={cn("border-transparent font-medium", style, className)}>
+      {sector}
     </Badge>
   );
 }

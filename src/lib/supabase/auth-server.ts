@@ -57,3 +57,12 @@ export async function requireAdmin(): Promise<SessionUser> {
   if (user.role !== "admin") redirect("/");
   return user;
 }
+
+// Belt-and-suspenders check for signed-in-only pages — middleware already
+// blocks unauthenticated requests, but a Server Component shouldn't rely on
+// that alone.
+export async function requireUser(): Promise<SessionUser> {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  return user;
+}

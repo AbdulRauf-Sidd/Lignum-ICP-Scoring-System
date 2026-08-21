@@ -2,22 +2,22 @@ import { cn } from "@/lib/utils";
 
 function scoreColor(score: number) {
   if (score >= 82) return "text-emerald-600 dark:text-emerald-400";
-  if (score >= 68) return "text-sky-600 dark:text-sky-400";
-  return "text-zinc-500 dark:text-zinc-400";
+  if (score >= 68) return "text-primary";
+  return "text-slate-500 dark:text-slate-400";
 }
 
 function scoreStroke(score: number) {
   if (score >= 82) return "stroke-emerald-500";
-  if (score >= 68) return "stroke-sky-500";
-  return "stroke-zinc-400";
+  if (score >= 68) return "stroke-primary";
+  return "stroke-slate-400";
 }
 
 export function ScoreRing({ score, size = 44 }: { score: number | null; size?: number }) {
   if (score === null) {
     return (
       <div
-        className="flex items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 text-xs text-muted-foreground"
-        style={{ width: size, height: size }}
+        className="flex items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 text-muted-foreground"
+        style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.3)) }}
       >
         —
       </div>
@@ -50,8 +50,11 @@ export function ScoreRing({ score, size = 44 }: { score: number | null; size?: n
           className={scoreStroke(score)}
         />
       </svg>
-      <div className={cn("absolute inset-0 flex items-center justify-center text-xs font-semibold", scoreColor(score))}>
-        {score}
+      <div
+        className={cn("absolute inset-0 flex items-center justify-center font-semibold tabular-nums", scoreColor(score))}
+        style={{ fontSize: Math.max(9, Math.round(size * 0.3)) }}
+      >
+        {Math.round(score)}
       </div>
     </div>
   );

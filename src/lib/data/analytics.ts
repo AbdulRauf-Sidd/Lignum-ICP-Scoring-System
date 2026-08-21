@@ -55,6 +55,22 @@ export async function getSectorPerformance(): Promise<SectorPerformance[]> {
   });
 }
 
+export interface SectorCompanyCount {
+  sector: string;
+  count: number;
+}
+
+export async function getCompanyCountBySector(): Promise<SectorCompanyCount[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("companies").select("sector");
+  if (error) throw new Error(`Failed to load companies: ${error.message}`);
+  const rows = (data ?? []) as { sector: string | null }[];
+  return SECTORS.map(({ sector }) => ({
+    sector,
+    count: rows.filter((r) => r.sector === sector).length,
+  })).sort((a, b) => b.count - a.count);
+}
+
 export interface TierCount {
   tier: Tier;
   count: number;

@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu, Layers, LogOut } from "lucide-react";
+import { Menu, Layers, LogOut, Bell } from "lucide-react";
 import { AutoRefresh } from "@/components/layout/auto-refresh";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +61,15 @@ export function AppShell({
 
           <div className="flex-1" />
 
-          <ThemeToggle />
+          <Button variant="outline" size="icon" className="relative rounded-full" aria-label="Notifications">
+            <Bell className="size-4" />
+            {triageCount > 0 && (
+              <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 justify-center border-2 border-background bg-sidebar-primary px-1 text-[10px] text-sidebar-primary-foreground">
+                {triageCount}
+              </Badge>
+            )}
+          </Button>
+          <ThemeToggle className="rounded-full" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -102,8 +111,8 @@ function SidebarBrand() {
         <Layers className="size-4" />
       </div>
       <div className="leading-tight">
-        <p className="text-sm font-semibold">Lignum</p>
-        <p className="text-[11px] text-muted-foreground">ICP Scoring</p>
+        <p className="text-sm font-semibold text-sidebar-foreground">Lignum</p>
+        <p className="text-[11px] text-sidebar-foreground/60">ICP Scoring</p>
       </div>
     </Link>
   );

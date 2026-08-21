@@ -49,73 +49,73 @@
 }
 
 :root {
-  /* Lignum brand palette (lignumgroup.com): navy, gold and burnt orange on a warm off-white ground. */
-  --background: #ffffff;
-  --foreground: #232f42;
+  /* Matches docs/Lignum ICP Scoring.html: navy sidebar, burnt-orange primary on a cool light blue-gray ground. */
+  --background: #ebeff4;
+  --foreground: #0e2335;
   --card: #ffffff;
-  --card-foreground: #232f42;
+  --card-foreground: #0e2335;
   --popover: #ffffff;
-  --popover-foreground: #232f42;
-  --primary: #232f42;
+  --popover-foreground: #0e2335;
+  --primary: #e67e30;
   --primary-foreground: #ffffff;
-  --secondary: #efe6d7;
-  --secondary-foreground: #232f42;
-  --muted: #f5f1ea;
-  --muted-foreground: #7a7266;
-  --accent: #e0cdaf;
-  --accent-foreground: #232f42;
+  --secondary: #f2f6fa;
+  --secondary-foreground: #0e2335;
+  --muted: #eef2f7;
+  --muted-foreground: #7e92a6;
+  --accent: #e3e9f0;
+  --accent-foreground: #0e2335;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e6ded1;
-  --input: #e6ded1;
-  --ring: #c19c60;
+  --border: #dbe3ec;
+  --input: #dbe3ec;
+  --ring: #e67e30;
   --chart-1: #232f42;
   --chart-2: #d15c0a;
   --chart-3: #c19c60;
   --chart-4: #5d6c7b;
   --chart-5: #c4bbaf;
   --radius: 0.625rem;
-  --sidebar: #232f42;
-  --sidebar-foreground: #f9fafa;
-  --sidebar-primary: #d15c0a;
+  --sidebar: #0b1f33;
+  --sidebar-foreground: #f2f6fa;
+  --sidebar-primary: #e67e30;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #2f3d54;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #33415a;
-  --sidebar-ring: #c19c60;
+  --sidebar-accent: #16283d;
+  --sidebar-accent-foreground: #f2f6fa;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #e67e30;
 }
 
 .dark {
-  --background: #171e2b;
-  --foreground: #f3efe7;
-  --card: #1e2636;
-  --card-foreground: #f3efe7;
-  --popover: #1e2636;
-  --popover-foreground: #f3efe7;
-  --primary: #c19c60;
-  --primary-foreground: #1e2636;
-  --secondary: #2a3345;
-  --secondary-foreground: #f3efe7;
-  --muted: #2a3345;
-  --muted-foreground: #9a9488;
-  --accent: #33415a;
-  --accent-foreground: #f3efe7;
+  --background: #0f172a;
+  --foreground: #eef2f7;
+  --card: #16213a;
+  --card-foreground: #eef2f7;
+  --popover: #16213a;
+  --popover-foreground: #eef2f7;
+  --primary: #e67e30;
+  --primary-foreground: #ffffff;
+  --secondary: #1e2a42;
+  --secondary-foreground: #eef2f7;
+  --muted: #1e2a42;
+  --muted-foreground: #93a3b8;
+  --accent: #24344f;
+  --accent-foreground: #eef2f7;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: #333f52;
+  --border: #263650;
   --input: oklch(1 0 0 / 15%);
-  --ring: #c19c60;
+  --ring: #e67e30;
   --chart-1: #e0cdaf;
   --chart-2: #d97a2e;
   --chart-3: #c19c60;
   --chart-4: #8a97a8;
   --chart-5: #c4bbaf;
-  --sidebar: #141a24;
-  --sidebar-foreground: #f3efe7;
-  --sidebar-primary: #d15c0a;
+  --sidebar: #0b1f33;
+  --sidebar-foreground: #f2f6fa;
+  --sidebar-primary: #e67e30;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e2636;
-  --sidebar-accent-foreground: #f3efe7;
+  --sidebar-accent: #16283d;
+  --sidebar-accent-foreground: #f2f6fa;
   --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #c19c60;
+  --sidebar-ring: #e67e30;
 }
 
 @layer base {

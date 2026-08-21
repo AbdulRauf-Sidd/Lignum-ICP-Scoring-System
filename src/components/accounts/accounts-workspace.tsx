@@ -2,24 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Briefcase, Loader2, RefreshCw, Star } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { AlertTriangle, Briefcase, Loader2, Star } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ScoreRing } from "@/components/shared/score-display";
+import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import { formatDate } from "@/lib/format";
 import type { AccountsData } from "@/lib/data/accounts";
 import { saveQualitativeRatings, saveTalentInsights } from "@/app/(dashboard)/accounts/actions";
@@ -42,11 +32,87 @@ const RATING_FIELDS = [
 
 type RatingKey = (typeof RATING_FIELDS)[number]["key"];
 
+const AVATAR_STYLES = [
+  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
+  "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
+];
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function hashIndex(key: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return hash % mod;
+}
+
+function Avatar({ id, name, className }: { id: string; name: string; className?: string }) {
+  const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center rounded-md font-bold", style, className)}>
+      {initials(name)}
+    </span>
+  );
+}
+
+function healthMeta(score: number | null): { label: string; badge: string; bar: string } {
+  if (score === null) return { label: "Unknown", badge: "bg-muted text-muted-foreground", bar: "bg-muted-foreground/40" };
+  if (score >= 75) return { label: "Healthy", badge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500" };
+  if (score >= 50) return { label: "Watch", badge: "bg-amber-500/10 text-amber-600 dark:text-amber-400", bar: "bg-amber-500" };
+  return { label: "At risk", badge: "bg-destructive/10 text-destructive", bar: "bg-destructive" };
+}
+
+function RatingBar({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(n)}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-md text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50",
+            n <= value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent",
+          )}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StatTile({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
+  return (
+    <div className="rounded-lg border px-3 py-2.5">
+      <p className={cn("text-2xl font-semibold leading-none", tone)}>{value}</p>
+      <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+    </div>
+  );
+}
+
 export function AccountsWorkspace({ data, now }: { data: AccountsData; now: string }) {
   const router = useRouter();
   const nowMs = new Date(now).getTime();
   const { companies, records, adverseEvents } = data;
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [activeId, setActiveId] = React.useState<string | null>(companies[0]?.id ?? null);
   const [savingQualitative, setSavingQualitative] = React.useState(false);
   const [savingTalent, setSavingTalent] = React.useState(false);
 
@@ -87,9 +153,9 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
     ),
   );
 
-  const openCompany = companies.find((c) => c.id === openId) ?? null;
-  const openRecord = openId ? records[openId] : null;
-  const openEvents = openId ? (adverseEvents[openId] ?? []) : [];
+  const active = companies.find((c) => c.id === activeId) ?? null;
+  const activeRecord = activeId ? records[activeId] : null;
+  const activeEvents = activeId ? (adverseEvents[activeId] ?? []) : [];
 
   function updateRating(companyId: string, key: RatingKey, value: number) {
     setRatingDrafts((prev) => ({ ...prev, [companyId]: { ...prev[companyId], [key]: value } }));
@@ -99,7 +165,7 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
     setSavingQualitative(true);
     try {
       await saveQualitativeRatings(companyId, ratingDrafts[companyId]);
-      toast.success("Qualitative ratings saved", { description: "Refresh reminder reset." });
+      toast.success("Marked reviewed today");
       router.refresh();
     } catch (err) {
       toast.error("Failed to save ratings", { description: err instanceof Error ? err.message : undefined });
@@ -125,211 +191,268 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
     }
   }
 
-  return (
-    <div>
+  const refreshDueCount = companies.filter((c) => {
+    const reviewedAt = records[c.id]?.qualitative_reviewed_at ?? null;
+    const daysSince = reviewedAt ? Math.round((nowMs - new Date(reviewedAt).getTime()) / 86_400_000) : null;
+    return daysSince === null || daysSince > 90;
+  }).length;
+  const totalAdverseEvents = Object.values(adverseEvents).reduce((sum, events) => sum + events.length, 0);
+  const healthScores = companies
+    .map((c) => records[c.id]?.health_score)
+    .filter((s): s is number => s !== null && s !== undefined);
+  const avgHealthScore = healthScores.length ? Math.round(healthScores.reduce((a, b) => a + b, 0) / healthScores.length) : null;
+
+  if (companies.length === 0) {
+    return (
       <Card>
-        <CardContent className="p-0">
-          {companies.length === 0 ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">
-              No client accounts yet — companies show up here once their lifecycle status moves to &quot;client&quot;.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Sector</TableHead>
-                    <TableHead>Health score</TableHead>
-                    <TableHead>Last reviewed</TableHead>
-                    <TableHead>Adverse events</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {companies.map((c) => {
-                    const record = records[c.id];
-                    const events = adverseEvents[c.id] ?? [];
-                    const reviewedAt = record?.qualitative_reviewed_at ?? null;
-                    const daysSince = reviewedAt ? Math.round((nowMs - new Date(reviewedAt).getTime()) / 86_400_000) : null;
-                    const needsRefresh = daysSince === null || daysSince > 90;
-                    return (
-                      <TableRow key={c.id} className="cursor-pointer" onClick={() => setOpenId(c.id)}>
-                        <TableCell>
-                          <p className="font-medium">{c.name}</p>
-                          <p className="text-xs text-muted-foreground">{c.domain}</p>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{c.sector || "—"}</TableCell>
-                        <TableCell>
-                          <ScoreRing score={record?.health_score ?? null} size={36} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-sm">
-                            {reviewedAt ? formatDate(reviewedAt) : "Not yet reviewed"}
-                            {needsRefresh && (
-                              <Badge variant="outline" className="gap-1 border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                                <RefreshCw className="size-3" /> Refresh due
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {events.length > 0 ? (
-                            <Badge variant="outline" className="gap-1 border-transparent bg-destructive/10 text-destructive">
-                              <AlertTriangle className="size-3" /> {events.length}
-                            </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">None</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+        <CardContent className="py-16 text-center text-sm text-muted-foreground">
+          No client accounts yet — companies show up here once their lifecycle status moves to &quot;client&quot;.
         </CardContent>
       </Card>
+    );
+  }
 
-      <Sheet open={!!openId} onOpenChange={(v) => !v && setOpenId(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-lg">
-          {openCompany && (
-            <div className="flex flex-col gap-6 p-6">
-              <SheetHeader className="p-0">
-                <SheetTitle>{openCompany.name}</SheetTitle>
-                <SheetDescription>
-                  {openCompany.sector || "Not classified"}
-                  {openCompany.subSector ? ` · ${openCompany.subSector}` : ""}
-                </SheetDescription>
-              </SheetHeader>
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="Clients" value={companies.length} />
+        <StatTile label="Refresh due" value={refreshDueCount} tone={refreshDueCount > 0 ? "text-amber-600 dark:text-amber-400" : undefined} />
+        <StatTile label="Adverse events" value={totalAdverseEvents} tone={totalAdverseEvents > 0 ? "text-destructive" : undefined} />
+        <StatTile label="Avg health score" value={avgHealthScore ?? "—"} />
+      </div>
 
-              <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-                <ScoreRing score={openRecord?.health_score ?? null} size={48} />
-                <div>
-                  <p className="text-sm font-medium">Account health score</p>
-                  <p className="text-xs text-muted-foreground">Not set yet — computed from monitoring, ratings and delivery signals once available.</p>
-                </div>
+      <div className="mb-6 flex flex-nowrap items-center gap-2.5 overflow-x-auto pb-1">
+        {companies.map((c) => {
+          const record = records[c.id];
+          const meta = healthMeta(record?.health_score ?? null);
+          const isActive = activeId === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActiveId(c.id)}
+              className={cn(
+                "flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
+                isActive ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
+              )}
+            >
+              <Avatar id={c.id} name={c.name} className="size-8 text-xs" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{c.name}</p>
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  {record?.health_score ?? "—"} · {meta.label}
+                </p>
               </div>
+            </button>
+          );
+        })}
+      </div>
 
-              <div>
-                <p className="mb-2 text-sm font-medium">Adverse events feed</p>
-                {openEvents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No adverse events recorded.</p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {openEvents.map((e) => (
-                      <div key={e.id} className="flex items-start justify-between gap-2 rounded-lg border px-3 py-2">
-                        <div>
-                          <p className="text-sm font-medium">{e.type}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(e.event_date)}</p>
-                        </div>
-                        <Badge variant="outline" className={cn("border-transparent capitalize", SEVERITY_STYLES[e.severity])}>
-                          {e.severity}
+      {active && (
+        <div className="flex flex-col gap-6">
+          {(() => {
+            const meta = healthMeta(activeRecord?.health_score ?? null);
+            const draft = ratingDrafts[active.id];
+            const qualAvg = draft ? (Object.values(draft).reduce((a, b) => a + b, 0) / RATING_FIELDS.length).toFixed(1) : "—";
+            return (
+              <Card>
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                  <div className="flex items-center gap-4">
+                    <Avatar id={active.id} name={active.name} className="size-14 text-lg" />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-semibold">{active.name}</h2>
+                        <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">
+                          Client
                         </Badge>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-medium">
-                    <Star className="size-4" /> Qualitative ratings
-                  </p>
-                  <span className="text-xs text-muted-foreground">
-                    {openRecord?.qualitative_reviewed_at ? `Reviewed ${formatDate(openRecord.qualitative_reviewed_at)}` : "Not yet reviewed"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {RATING_FIELDS.map(({ key, label }) => (
-                    <div key={key} className="flex items-center justify-between gap-3">
-                      <Label className="text-sm font-normal">{label}</Label>
-                      <Select
-                        value={String(ratingDrafts[openCompany.id][key])}
-                        onValueChange={(v) => updateRating(openCompany.id, key, Number(v))}
-                      >
-                        <SelectTrigger className="w-20">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <SelectItem key={n} value={String(n)}>
-                              {n}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="text-sm text-muted-foreground">{active.domain}</span>
+                        <SectorBadge sector={active.sector} />
+                        {active.subSector && <span className="text-xs text-muted-foreground">{active.subSector}</span>}
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Account health</p>
+                      <Badge variant="outline" className={cn("border-transparent", meta.badge)}>
+                        {meta.label}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-2xl font-semibold tabular-nums">{activeRecord?.health_score ?? "—"}</span>
+                      <span className="h-1.5 w-32 overflow-hidden rounded-full bg-muted">
+                        <span
+                          className={cn("block h-full rounded-full", meta.bar)}
+                          style={{ width: `${activeRecord?.health_score ?? 0}%` }}
+                        />
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Qual {qualAvg}/5 · Adverse {activeEvents.length}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Company details</CardTitle>
+              <CardDescription>From classification &amp; scoring — no separate firmographics feed is wired up yet.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div>
+                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Sector</p>
+                  <p className="mt-1 text-sm font-medium">{active.sector || "—"}</p>
                 </div>
-                <Button size="sm" className="mt-3" onClick={() => handleSaveQualitative(openCompany.id)} disabled={savingQualitative}>
-                  {savingQualitative && <Loader2 className="size-4 animate-spin" />}
-                  Save ratings
-                </Button>
+                <div>
+                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Sub-sector</p>
+                  <p className="mt-1 text-sm font-medium">{active.subSector || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Tier</p>
+                  <div className="mt-1">
+                    <TierBadge tier={active.tier} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">ICP score</p>
+                  <p className="mt-1 text-sm font-medium tabular-nums">{active.score !== null ? Math.round(active.score) : "—"}</p>
+                </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <Separator />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="flex-row items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-1.5">
+                    <Star className="size-4" /> Client scorecard
+                  </CardTitle>
+                  <CardDescription>
+                    {activeRecord?.qualitative_reviewed_at
+                      ? `Ratings last reviewed ${formatDate(activeRecord.qualitative_reviewed_at)}`
+                      : "Not yet reviewed"}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {RATING_FIELDS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between gap-3">
+                    <Label className="text-sm font-normal">{label}</Label>
+                    <RatingBar
+                      value={ratingDrafts[active.id][key]}
+                      onChange={(n) => updateRating(active.id, key, n)}
+                      disabled={savingQualitative}
+                    />
+                  </div>
+                ))}
+                <Button size="sm" className="w-fit" onClick={() => handleSaveQualitative(active.id)} disabled={savingQualitative}>
+                  {savingQualitative && <Loader2 className="size-4 animate-spin" />}
+                  Mark reviewed today
+                </Button>
+              </CardContent>
+            </Card>
 
-              <div>
-                <p className="mb-3 flex items-center gap-1.5 text-sm font-medium">
-                  <Briefcase className="size-4" /> Talent Insights (manual)
-                </p>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5">
+                  <Briefcase className="size-4" /> Talent Insights
+                </CardTitle>
+                <CardDescription>Manual entry.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Active roles</Label>
                     <Input
                       type="number"
-                      value={talentDrafts[openCompany.id].activeRoles}
-                      onChange={(e) => updateTalent(openCompany.id, { activeRoles: Number(e.target.value) })}
+                      value={talentDrafts[active.id].activeRoles}
+                      onChange={(e) => updateTalent(active.id, { activeRoles: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Placements YTD</Label>
                     <Input
                       type="number"
-                      value={talentDrafts[openCompany.id].placementsYtd}
-                      onChange={(e) => updateTalent(openCompany.id, { placementsYtd: Number(e.target.value) })}
+                      value={talentDrafts[active.id].placementsYtd}
+                      onChange={(e) => updateTalent(active.id, { placementsYtd: Number(e.target.value) })}
                     />
                   </div>
                   <div className="col-span-2 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Avg. time to fill (days)</Label>
                     <Input
                       type="number"
-                      value={talentDrafts[openCompany.id].avgTimeToFillDays}
-                      onChange={(e) => updateTalent(openCompany.id, { avgTimeToFillDays: Number(e.target.value) })}
+                      value={talentDrafts[active.id].avgTimeToFillDays}
+                      onChange={(e) => updateTalent(active.id, { avgTimeToFillDays: Number(e.target.value) })}
                     />
                   </div>
                   <div className="col-span-2 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Notes</Label>
                     <Textarea
-                      value={talentDrafts[openCompany.id].notes}
-                      onChange={(e) => updateTalent(openCompany.id, { notes: e.target.value })}
+                      value={talentDrafts[active.id].notes}
+                      onChange={(e) => updateTalent(active.id, { notes: e.target.value })}
                       rows={3}
                     />
                   </div>
                 </div>
-                <Button size="sm" className="mt-3" onClick={() => handleSaveTalent(openCompany.id)} disabled={savingTalent}>
+                <Button size="sm" className="w-fit" onClick={() => handleSaveTalent(active.id)} disabled={savingTalent}>
                   {savingTalent && <Loader2 className="size-4 animate-spin" />}
                   Save Talent Insights
                 </Button>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              <Separator />
+          <Card>
+            <CardHeader>
+              <CardTitle>Adverse events</CardTitle>
+              <CardDescription>Creditsafe + Cognism.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {activeEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No adverse events recorded.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {activeEvents.map((e) => (
+                    <div key={e.id} className="flex items-start justify-between gap-2 rounded-lg border px-3 py-2.5">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{e.type}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(e.event_date)}
+                            {e.description ? ` · ${e.description}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className={cn("shrink-0 border-transparent capitalize", SEVERITY_STYLES[e.severity])}>
+                        {e.severity}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-              <div className="rounded-lg border border-dashed px-4 py-6 text-center">
-                <p className="text-sm font-medium text-muted-foreground">CRM delivery metrics</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Not yet connected. Live Loxo delivery metrics (candidate stage, placement fee, dates) land in
-                  this panel in a later phase.
-                </p>
-              </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-6 text-center">
+            <div className="mx-auto">
+              <p className="text-sm font-medium text-muted-foreground">Delivery efficiency · from CRM</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Placement volume, time-to-fill, fill rate and margin — sourced from Loxo. Not yet connected.
+              </p>
             </div>
-          )}
-        </SheetContent>
-      </Sheet>
+            <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
+              Not yet wired
+            </Badge>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

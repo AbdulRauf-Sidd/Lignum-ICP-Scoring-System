@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import type { Tier } from "@/lib/types";
 
 // Mirrors the real `account_records` table — one row per client company,
 // manually maintained (no automated pipeline computes these).
@@ -33,13 +34,15 @@ export interface ClientCompany {
   domain: string;
   sector: string;
   subSector: string;
+  score: number | null;
+  tier: Tier;
 }
 
 async function getClientCompanies(): Promise<ClientCompany[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, domain, sector, sub_sector")
+    .select("id, name, domain, sector, sub_sector, score, tier")
     .eq("lifecycle_status", "client");
   if (error) throw new Error(`Failed to load client companies: ${error.message}`);
   return (data ?? []).map((r) => ({
@@ -48,6 +51,8 @@ async function getClientCompanies(): Promise<ClientCompany[]> {
     domain: r.domain as string,
     sector: (r.sector as string | null) ?? "",
     subSector: (r.sub_sector as string | null) ?? "",
+    score: r.score as number | null,
+    tier: r.tier as Tier,
   }));
 }
 

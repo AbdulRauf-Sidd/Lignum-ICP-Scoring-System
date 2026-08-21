@@ -56,6 +56,13 @@ export function formatDateTime(iso: string | null): string {
   }).format(new Date(iso));
 }
 
+export function formatDateHeading(date: Date): string {
+  const weekday = date.toLocaleDateString("en-GB", { weekday: "long" });
+  const day = date.getDate();
+  const month = date.toLocaleDateString("en-GB", { month: "long" });
+  return `${weekday} ${day} ${month}`.toUpperCase();
+}
+
 export function formatRelativeTime(iso: string): string {
   const now = Date.now();
   const then = new Date(iso).getTime();

@@ -174,6 +174,87 @@ export async function getTriageCount(): Promise<number> {
   return count ?? 0;
 }
 
+export interface FlaggedCompany {
+  id: string;
+  name: string;
+  domain: string;
+  status: CompanyStatus;
+}
+
+export interface FlaggedCompaniesResult {
+  items: FlaggedCompany[];
+  count: number;
+}
+
+export async function getFailedCompanies(limit = 5): Promise<FlaggedCompaniesResult> {
+  const supabase = getSupabaseServerClient();
+  const { data, error, count } = await supabase
+    .from("companies")
+    .select("id, name, domain, status", { count: "exact" })
+    .eq("status", "failed")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`Failed to load failed companies: ${error.message}`);
+  return { items: (data ?? []) as FlaggedCompany[], count: count ?? 0 };
+}
+
+export async function getNoMatchCompanies(limit = 5): Promise<FlaggedCompaniesResult> {
+  const supabase = getSupabaseServerClient();
+  const { data, error, count } = await supabase
+    .from("companies")
+    .select("id, name, domain, status", { count: "exact" })
+    .eq("match_flag", "no_match")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`Failed to load no-match companies: ${error.message}`);
+  return { items: (data ?? []) as FlaggedCompany[], count: count ?? 0 };
+}
+
+export interface LowConfidenceCompany extends FlaggedCompany {
+  confidence: number;
+}
+
+export interface LowConfidenceCompaniesResult {
+  items: LowConfidenceCompany[];
+  count: number;
+}
+
+export async function getLowConfidenceCompanies(limit = 5): Promise<LowConfidenceCompaniesResult> {
+  const supabase = getSupabaseServerClient();
+  const { data, error, count } = await supabase
+    .from("companies")
+    .select("id, name, domain, status, classification_confidence", { count: "exact" })
+    .not("classification_confidence", "is", null)
+    .lt("classification_confidence", 70)
+    .order("classification_confidence", { ascending: true })
+    .limit(limit);
+
+  if (error) throw new Error(`Failed to load low-confidence companies: ${error.message}`);
+  const items = (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    domain: r.domain as string,
+    status: r.status as CompanyStatus,
+    confidence: r.classification_confidence as number,
+  }));
+  return { items, count: count ?? 0 };
+}
+
+export async function getEnrichmentQueue(limit = 20): Promise<FlaggedCompany[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id, name, domain, status")
+    .in("status", ["queued", "enriching", "failed"])
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`Failed to load enrichment queue: ${error.message}`);
+  return (data ?? []) as FlaggedCompany[];
+}
+
 export async function getTriageCompanies(): Promise<Company[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
