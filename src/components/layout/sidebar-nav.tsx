@@ -10,9 +10,11 @@ const GROUP_ORDER = ["Prospecting", "Oversight", "Accounts", "Admin"] as const;
 
 export function SidebarNav({
   counts,
+  isAdmin,
   onNavigate,
 }: {
   counts: Partial<Record<"triage", number>>;
+  isAdmin: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -20,7 +22,7 @@ export function SidebarNav({
   return (
     <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
       {GROUP_ORDER.map((group) => {
-        const items = NAV_ITEMS.filter((i) => i.group === group);
+        const items = NAV_ITEMS.filter((i) => i.group === group && (!i.adminOnly || isAdmin));
         if (items.length === 0) return null;
         return (
           <div key={group} className="flex flex-col gap-1">

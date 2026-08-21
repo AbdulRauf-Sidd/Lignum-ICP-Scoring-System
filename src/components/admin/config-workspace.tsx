@@ -3,21 +3,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
 import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
 import { saveIcpProfile, deleteIcpProfile, setSectorTaxonomyActive } from "@/app/(dashboard)/admin/config/actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import s from "./config-workspace.module.css";
 
 const WEIGHT_KEYS = [
   "weight_icp_fit",
@@ -101,7 +92,7 @@ export function ConfigWorkspace({
     setDrafts((prev) =>
       prev.map((d) => {
         if (d.clientKey !== clientKey) return d;
-        const next = checked ? Array.from(new Set([...d.target_sectors, sector])) : d.target_sectors.filter((s) => s !== sector);
+        const next = checked ? Array.from(new Set([...d.target_sectors, sector])) : d.target_sectors.filter((s2) => s2 !== sector);
         return { ...d, target_sectors: next };
       }),
     );
@@ -200,185 +191,220 @@ export function ConfigWorkspace({
     return map;
   }, [taxonomy]);
 
-  return (
-    <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle>Per-ICP weights</CardTitle>
-            <CardDescription>Weights must sum to 100 for each ICP before saving.</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={addProfile}>
-            <Plus className="size-4" /> New ICP profile
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {drafts.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              No ICP profiles yet. Add one to start scoring against real weights.
-            </p>
-          ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="flex-wrap">
-                {drafts.map((d) => (
-                  <TabsTrigger key={d.clientKey} value={d.clientKey}>
-                    {d.icp_name || "Untitled"}
-                    {!d.id && (
-                      <Badge variant="outline" className="ml-1.5 border-transparent bg-muted px-1 text-[10px]">
-                        new
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {drafts.map((d) => {
-                const sum = sumFor(d);
-                const valid = sum === 100;
-                const isPending = pendingKey === d.clientKey;
-                return (
-                  <TabsContent key={d.clientKey} value={d.clientKey} className="mt-4 flex flex-col gap-5">
-                    <div className="space-y-1.5">
-                      <Label>ICP name</Label>
-                      <Input
-                        value={d.icp_name}
-                        onChange={(e) => updateDraft(d.clientKey, { icp_name: e.target.value })}
-                        disabled={isPending}
-                      />
-                    </div>
+  const activeDraft = drafts.find((d) => d.clientKey === activeTab) ?? null;
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      {WEIGHT_KEYS.map((key) => (
-                        <div key={key} className="space-y-1.5">
-                          <Label>{CATEGORY_LABEL_BY_WEIGHT_KEY[key]}</Label>
-                          <div className="relative">
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={d[key]}
-                              onChange={(e) => updateDraft(d.clientKey, { [key]: Number(e.target.value) } as Partial<Draft>)}
-                              className="pr-8"
-                              disabled={isPending}
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+  return (
+    <div className={s.wrap}>
+      <div className={s.inner}>
+        <div className={s.specbar}>
+          <span>Model config</span>
+          <span className={s.specbarMeta}>
+            <span>ICP scoring &middot; weights &amp; taxonomy</span>
+            <span>Admin only</span>
+          </span>
+        </div>
+        <header className={s.hero}>
+          <p className={s.eyebrow}>Config, not code</p>
+          <h1 className={s.h1}>Per-ICP weights, bands and the active sector taxonomy.</h1>
+          <p className={s.heroP}>
+            Changes here apply on the next score or re-score, with no new API spend. Weights must sum to 100 per
+            ICP. Inactive sub-sectors are excluded from classification going forward.
+          </p>
+        </header>
+
+        <section className={s.section}>
+          <div className={s.sectionHead}>
+            <span className={s.sectionNum}>01</span>
+            <h2>Per-ICP weights</h2>
+            <span className={s.sectionHint}>icp_profiles &middot; live</span>
+          </div>
+          <div className={s.card}>
+            <div className={s.cardHeadRow}>
+              <div>
+                <p className={s.cardTitle}>Scoring profiles</p>
+                <p className={s.cardHint}>One row per ICP. Weights, target sectors, bands and fit rules.</p>
+              </div>
+              <button type="button" className={s.btn} onClick={addProfile}>
+                <Plus size={13} /> New ICP profile
+              </button>
+            </div>
+
+            {drafts.length === 0 ? (
+              <p className={s.emptyState}>No ICP profiles yet. Add one to start scoring against real weights.</p>
+            ) : (
+              <>
+                <div className={s.tabRow}>
+                  {drafts.map((d) => (
+                    <button
+                      key={d.clientKey}
+                      type="button"
+                      className={cn(s.tab, activeTab === d.clientKey && s.tabActive)}
+                      onClick={() => setActiveTab(d.clientKey)}
+                    >
+                      {d.icp_name || "Untitled"}
+                      {!d.id && <span className={s.tagMuted}>new</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {activeDraft &&
+                  (() => {
+                    const d = activeDraft;
+                    const sum = sumFor(d);
+                    const valid = sum === 100;
+                    const isPending = pendingKey === d.clientKey;
+                    return (
+                      <div className="flex flex-col gap-5">
+                        <div className={s.fieldGroup}>
+                          <label className={s.fieldLabel}>ICP name</label>
+                          <input
+                            className={s.input}
+                            value={d.icp_name}
+                            onChange={(e) => updateDraft(d.clientKey, { icp_name: e.target.value })}
+                            disabled={isPending}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                          {WEIGHT_KEYS.map((key) => (
+                            <div key={key} className={s.fieldGroup}>
+                              <label className={s.fieldLabel}>{CATEGORY_LABEL_BY_WEIGHT_KEY[key]}</label>
+                              <div className={s.numberInputWrap}>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  className={s.numberInput}
+                                  value={d[key]}
+                                  onChange={(e) =>
+                                    updateDraft(d.clientKey, { [key]: Number(e.target.value) } as Partial<Draft>)
+                                  }
+                                  disabled={isPending}
+                                />
+                                <span className={s.percentSign}>%</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className={s.fieldGroup}>
+                          <label className={s.fieldLabel}>Target sectors</label>
+                          <div className={s.checkboxRow}>
+                            {distinctSectors.map((sector) => {
+                              const checked = d.target_sectors.includes(sector);
+                              return (
+                                <button
+                                  key={sector}
+                                  type="button"
+                                  className={cn(s.sectorPill, checked && s.sectorPillActive)}
+                                  onClick={() => toggleSector(d.clientKey, sector, !checked)}
+                                  disabled={isPending}
+                                >
+                                  {sector}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label>Target sectors</Label>
-                      <div className="flex flex-wrap gap-x-6 gap-y-2">
-                        {distinctSectors.map((sector) => (
-                          <label key={sector} className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={d.target_sectors.includes(sector)}
-                              onCheckedChange={(checked) => toggleSector(d.clientKey, sector, checked === true)}
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                          <div className={s.fieldGroup}>
+                            <label className={s.fieldLabel}>Revenue bands (JSON)</label>
+                            <textarea
+                              className={s.textarea}
+                              value={d.revenue_bands_usd}
+                              onChange={(e) => updateDraft(d.clientKey, { revenue_bands_usd: e.target.value })}
                               disabled={isPending}
                             />
-                            {sector}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
+                            {!jsonIsValid(d.revenue_bands_usd) && (
+                              <span className={s.tagDestructive}>Not valid JSON</span>
+                            )}
+                          </div>
+                          <div className={s.fieldGroup}>
+                            <label className={s.fieldLabel}>Headcount bands (JSON)</label>
+                            <textarea
+                              className={s.textarea}
+                              value={d.headcount_bands}
+                              onChange={(e) => updateDraft(d.clientKey, { headcount_bands: e.target.value })}
+                              disabled={isPending}
+                            />
+                            {!jsonIsValid(d.headcount_bands) && (
+                              <span className={s.tagDestructive}>Not valid JSON</span>
+                            )}
+                          </div>
+                          <div className={s.fieldGroup}>
+                            <label className={s.fieldLabel}>Fit rules (JSON)</label>
+                            <textarea
+                              className={s.textarea}
+                              value={d.fit_rules}
+                              onChange={(e) => updateDraft(d.clientKey, { fit_rules: e.target.value })}
+                              disabled={isPending}
+                            />
+                            {!jsonIsValid(d.fit_rules) && <span className={s.tagDestructive}>Not valid JSON</span>}
+                          </div>
+                        </div>
 
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Revenue bands (JSON)</Label>
-                        <Textarea
-                          value={d.revenue_bands_usd}
-                          onChange={(e) => updateDraft(d.clientKey, { revenue_bands_usd: e.target.value })}
-                          className="min-h-32 font-mono text-xs"
-                          disabled={isPending}
-                        />
-                        {!jsonIsValid(d.revenue_bands_usd) && (
-                          <p className="text-xs text-destructive">Not valid JSON.</p>
-                        )}
+                        <div className={s.footerRow}>
+                          <span className={valid ? s.tagGreen : s.tagDestructive}>
+                            {valid ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                            Sum: {sum} / 100
+                          </span>
+                          <div className="flex gap-2">
+                            <button type="button" className={s.btnDestructive} onClick={() => remove(d)} disabled={isPending}>
+                              <Trash2 size={13} /> Delete
+                            </button>
+                            <button
+                              type="button"
+                              className={s.btnPrimary}
+                              onClick={() => save(d)}
+                              disabled={!valid || isPending}
+                            >
+                              {isPending && <Loader2 size={13} className="animate-spin" />}
+                              Save {d.icp_name || "profile"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Headcount bands (JSON)</Label>
-                        <Textarea
-                          value={d.headcount_bands}
-                          onChange={(e) => updateDraft(d.clientKey, { headcount_bands: e.target.value })}
-                          className="min-h-32 font-mono text-xs"
-                          disabled={isPending}
-                        />
-                        {!jsonIsValid(d.headcount_bands) && (
-                          <p className="text-xs text-destructive">Not valid JSON.</p>
-                        )}
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Fit rules (JSON)</Label>
-                        <Textarea
-                          value={d.fit_rules}
-                          onChange={(e) => updateDraft(d.clientKey, { fit_rules: e.target.value })}
-                          className="min-h-32 font-mono text-xs"
-                          disabled={isPending}
-                        />
-                        {!jsonIsValid(d.fit_rules) && <p className="text-xs text-destructive">Not valid JSON.</p>}
-                      </div>
-                    </div>
+                    );
+                  })()}
+              </>
+            )}
+          </div>
+        </section>
 
-                    <div className="flex items-center justify-between">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "gap-1.5 border-transparent",
-                          valid ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
-                        )}
-                      >
-                        {valid ? <CheckCircle2 className="size-3.5" /> : <AlertCircle className="size-3.5" />}
-                        Sum: {sum} / 100
-                      </Badge>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => remove(d)} disabled={isPending}>
-                          <Trash2 className="size-4" /> Delete
-                        </Button>
-                        <Button onClick={() => save(d)} disabled={!valid || isPending}>
-                          {isPending && <Loader2 className="size-4 animate-spin" />}
-                          Save {d.icp_name || "profile"}
-                        </Button>
-                      </div>
-                    </div>
-                  </TabsContent>
-                );
-              })}
-            </Tabs>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sector taxonomy</CardTitle>
-          <CardDescription>Inactive sub-sectors are excluded from classification going forward.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-5">
-          {Array.from(taxonomyBySector.entries()).map(([sector, rows], i) => (
-            <div key={sector}>
-              {i > 0 && <Separator className="mb-5" />}
-              <p className="mb-2 text-sm font-medium">{sector}</p>
-              <div className="flex flex-col gap-2">
+        <section className={s.section}>
+          <div className={s.sectionHead}>
+            <span className={s.sectionNum}>02</span>
+            <h2>Sector taxonomy</h2>
+            <span className={s.sectionHint}>sector_taxonomy &middot; feeds the classifier</span>
+          </div>
+          <div className={s.stbl}>
+            {Array.from(taxonomyBySector.entries()).map(([sector, rows]) => (
+              <React.Fragment key={sector}>
+                <div className={s.stblGroupHead}>{sector}</div>
                 {rows.map((row) => (
-                  <div key={row.id} className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
-                    <span className={cn("text-sm", !row.active && "text-muted-foreground line-through")}>
-                      {row.sub_sector}
-                    </span>
-                    <Switch
-                      checked={row.active}
-                      onCheckedChange={(checked) => toggleActive(row, checked)}
-                      disabled={pendingSectorId === row.id}
-                    />
+                  <div key={row.id} className={s.stblRow}>
+                    <span className={cn(s.stblSub, !row.active && s.stblSubInactive)}>{row.sub_sector}</span>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <span className={row.active ? s.tagAmber : s.tagMuted}>{row.active ? "Active" : "Inactive"}</span>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={row.active}
+                        onChange={(e) => toggleActive(row, e.target.checked)}
+                        disabled={pendingSectorId === row.id}
+                      />
+                    </label>
                   </div>
                 ))}
-              </div>
-            </div>
-          ))}
-          {taxonomyBySector.size === 0 && (
-            <p className="py-10 text-center text-sm text-muted-foreground">No sector taxonomy configured yet.</p>
-          )}
-        </CardContent>
-      </Card>
+              </React.Fragment>
+            ))}
+            {taxonomyBySector.size === 0 && (
+              <p className={s.emptyState}>No sector taxonomy configured yet.</p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

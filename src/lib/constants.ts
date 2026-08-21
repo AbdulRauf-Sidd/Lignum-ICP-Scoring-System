@@ -42,10 +42,3 @@ export const SCORE_CATEGORY_LABELS: Record<string, string> = {
   hiring_growth: "Hiring & growth",
   financial_viability: "Financial viability",
 };
-
-export const CURRENT_USER = {
-  name: "Alex Morgan",
-  email: "alex.morgan@lignum.com",
-  role: "admin" as const,
-  initials: "AM",
-};

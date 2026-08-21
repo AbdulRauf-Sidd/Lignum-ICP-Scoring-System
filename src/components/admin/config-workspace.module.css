@@ -1,0 +1,418 @@
+/* Blueprint / architecture-spec aesthetic, matching
+   docs/Lignum_ICP_Scoring_System_Map.html — scoped to this page only. */
+
+.wrap {
+  --ink: #1b2a30;
+  --ink-2: #33474f;
+  --paper: #eae8e0;
+  --surface: #faf9f4;
+  --surface-2: #f2f0e8;
+  --line: #cbc7bb;
+  --line-soft: #dedbd0;
+  --steel: #5f727a;
+  --slate-blue: #3c5a66;
+  --amber: #c9791c;
+  --amber-deep: #a4600f;
+  --amber-tint: #f4e7d2;
+  --green: #3e7d5a;
+  --green-tint: #e2ede4;
+  --destructive: #a4341f;
+  --destructive-tint: #f4dcd2;
+  --display: var(--font-display), "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  --body: var(--font-body), "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: var(--font-mono), "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  color: var(--ink);
+  font-family: var(--body);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  margin: -1.5rem -1rem;
+  padding: 1.5rem 1rem 3rem;
+}
+
+@media (min-width: 640px) {
+  .wrap {
+    margin: -1.5rem -1.5rem;
+    padding: 1.5rem 1.5rem 3rem;
+  }
+}
+
+.inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.specbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: var(--ink);
+  color: var(--surface);
+  padding: 10px 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.specbarMeta {
+  display: flex;
+  gap: 18px;
+  color: #a9bbc0;
+}
+
+.hero {
+  border: 1px solid var(--line);
+  border-top: none;
+  background: var(--surface);
+  padding: 24px 24px 22px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber-deep);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 22px;
+  height: 2px;
+  background: var(--amber);
+}
+
+.h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(21px, 3vw, 28px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+}
+
+.heroP {
+  font-size: 14px;
+  color: var(--ink-2);
+  max-width: 68ch;
+  margin: 0;
+}
+
+.section {
+  margin-top: 28px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.sectionNum {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--steel);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  padding: 2px 7px;
+  background: var(--surface);
+}
+
+.sectionHead h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.sectionHint {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--steel);
+  letter-spacing: 0.03em;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 20px;
+}
+
+.cardHeadRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.cardHint {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.tabRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.tab {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabActive {
+  border-color: var(--amber);
+  background: var(--amber-tint);
+  color: var(--amber-deep);
+  font-weight: 600;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--steel);
+}
+
+.input {
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  outline: none;
+  border-radius: 2px;
+}
+
+.input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px var(--amber);
+}
+
+.numberInputWrap {
+  position: relative;
+}
+
+.numberInput {
+  composes: input;
+  font-family: var(--mono);
+  width: 100%;
+  padding-right: 26px;
+}
+
+.percentSign {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--steel);
+  pointer-events: none;
+}
+
+.textarea {
+  composes: input;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  min-height: 128px;
+  resize: vertical;
+  width: 100%;
+}
+
+.checkboxRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sectorPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.sectorPillActive {
+  border-color: var(--slate-blue);
+  background: #e9eef0;
+  color: var(--slate-blue);
+  font-weight: 600;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.tagAmber {
+  composes: tag;
+  background: var(--amber-tint);
+  color: var(--amber-deep);
+  border: 1px solid var(--amber);
+}
+
+.tagGreen {
+  composes: tag;
+  background: var(--green-tint);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+
+.tagDestructive {
+  composes: tag;
+  background: var(--destructive-tint);
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
+}
+
+.tagMuted {
+  composes: tag;
+  background: var(--surface-2);
+  color: var(--steel);
+  border: 1px solid var(--line);
+}
+
+.btn {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  border: 1px solid var(--ink-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  composes: btn;
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #fff;
+}
+
+.btnDestructive {
+  composes: btn;
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.footerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+
+.stbl {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.stblGroupHead {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slate-blue);
+  font-weight: 600;
+  background: var(--surface-2);
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.stbl > .stblGroupHead:first-child {
+  border-top: none;
+}
+
+.stblRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+
+.stblSub {
+  color: var(--ink-2);
+}
+
+.stblSubInactive {
+  color: var(--steel);
+  text-decoration: line-through;
+}
+
+.emptyState {
+  padding: 32px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--steel);
+}

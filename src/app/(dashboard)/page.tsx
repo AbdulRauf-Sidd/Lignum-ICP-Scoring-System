@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { getHomeStats } from "@/lib/data/companies";
 import { getRecentUsageRuns } from "@/lib/data/usage";
 import { formatRelativeTime, formatDateTime } from "@/lib/format";
-import { CURRENT_USER } from "@/lib/constants";
+import { getSessionUser } from "@/lib/supabase/auth-server";
 
 // Pipeline counts and recent runs change as n8n runs — never freeze this page.
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [stats, recentRuns] = await Promise.all([getHomeStats(), getRecentUsageRuns(8)]);
+  const [stats, recentRuns, user] = await Promise.all([getHomeStats(), getRecentUsageRuns(8), getSessionUser()]);
   const lastRun = recentRuns[0] ?? null;
+  const firstName = (user?.name ?? "there").split(" ")[0];
 
   const actionItems = [
     stats.entityAmbiguousCount > 0 && {
@@ -36,7 +37,7 @@ export default async function HomePage() {
   return (
     <div>
       <PageHeader
-        title={`Good afternoon, ${CURRENT_USER.name.split(" ")[0]}`}
+        title={`Good afternoon, ${firstName}`}
         description="A summary of what needs your attention, generated from your recent runs."
       />
 

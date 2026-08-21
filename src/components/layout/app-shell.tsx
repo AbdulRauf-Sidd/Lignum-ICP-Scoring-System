@@ -2,32 +2,45 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu, Layers } from "lucide-react";
+import { Menu, Layers, LogOut } from "lucide-react";
 import { AutoRefresh } from "@/components/layout/auto-refresh";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CURRENT_USER } from "@/lib/constants";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { signOut } from "@/lib/supabase/auth-actions";
+import type { SessionUser } from "@/lib/supabase/auth-server";
 
 export function AppShell({
   children,
   triageCount,
+  user,
 }: {
   children: React.ReactNode;
   triageCount: number;
+  user: SessionUser;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const counts = { triage: triageCount };
+  const isAdmin = user.role === "admin";
+  const initials = user.email.slice(0, 2).toUpperCase();
 
   return (
     <div className="flex min-h-svh w-full bg-background">
       <AutoRefresh />
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <SidebarBrand />
-        <SidebarNav counts={counts} />
+        <SidebarNav counts={counts} isAdmin={isAdmin} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -41,7 +54,7 @@ export function AppShell({
             <SheetContent side="left" className="w-64 bg-sidebar p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <SidebarBrand />
-              <SidebarNav counts={counts} onNavigate={() => setMobileOpen(false)} />
+              <SidebarNav counts={counts} isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
             </SheetContent>
           </Sheet>
 
@@ -49,15 +62,29 @@ export function AppShell({
 
           <ThemeToggle />
 
-          <div className="ml-1 flex items-center gap-2 border-l pl-3">
-            <Avatar className="size-7">
-              <AvatarFallback className="text-xs">{CURRENT_USER.initials}</AvatarFallback>
-            </Avatar>
-            <div className="hidden leading-tight sm:block">
-              <p className="text-sm font-medium">{CURRENT_USER.name}</p>
-              <p className="text-[11px] capitalize text-muted-foreground">{CURRENT_USER.role}</p>
-            </div>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="ml-1 flex items-center gap-2 rounded-md border-l pl-3 outline-none">
+                <Avatar className="size-7">
+                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                </Avatar>
+                <div className="hidden text-left leading-tight sm:block">
+                  <p className="max-w-40 truncate text-sm font-medium">{user.email}</p>
+                  <p className="text-[11px] capitalize text-muted-foreground">{user.role}</p>
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="font-normal">
+                <p className="truncate text-sm font-medium">{user.email}</p>
+                <p className="text-xs capitalize text-muted-foreground">{user.role}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => signOut()} variant="destructive">
+                <LogOut /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         <main className="flex-1 overflow-y-auto">
