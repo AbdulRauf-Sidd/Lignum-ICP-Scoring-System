@@ -8,10 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
-import { saveIcpProfile, deleteIcpProfile, setSectorTaxonomyActive } from "@/app/(dashboard)/admin/config/actions";
+import type { ModelSettingsRow } from "@/lib/data/model-settings";
+import {
+  saveIcpProfile,
+  deleteIcpProfile,
+  setSectorTaxonomyActive,
+  saveModelSettings,
+  type ModelSettingsInput,
+} from "@/app/(dashboard)/admin/config/actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -190,18 +198,44 @@ function BandEditor({
   );
 }
 
+function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
+  return {
+    tier_a_min: row.tier_a_min,
+    tier_b_min: row.tier_b_min,
+    contact_pull_on_demand: row.contact_pull_on_demand,
+    indicative_price_per_credit: row.indicative_price_per_credit,
+    re_pull_after_days: row.re_pull_after_days,
+    gbp_to_usd_rate: row.gbp_to_usd_rate,
+    eur_to_usd_rate: row.eur_to_usd_rate,
+    health_weight_qualitative: row.health_weight_qualitative,
+    health_weight_talent: row.health_weight_talent,
+    health_weight_adverse: row.health_weight_adverse,
+    review_reminder_days: row.review_reminder_days,
+  };
+}
+
 export function ConfigWorkspace({
   profiles,
   taxonomy,
+  settings,
 }: {
   profiles: IcpProfileRow[];
   taxonomy: SectorTaxonomyRow[];
+  settings: ModelSettingsRow;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = React.useState<Draft[]>(() => profiles.map(rowToDraft));
   const [activeTab, setActiveTab] = React.useState<string>(drafts[0]?.clientKey ?? "");
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const [pendingSectorId, setPendingSectorId] = React.useState<string | null>(null);
+  const [settingsDraft, setSettingsDraft] = React.useState<ModelSettingsInput>(() => toSettingsInput(settings));
+  const [savingSettings, setSavingSettings] = React.useState(false);
+
+  const [syncedSettings, setSyncedSettings] = React.useState(settings);
+  if (settings !== syncedSettings) {
+    setSyncedSettings(settings);
+    setSettingsDraft(toSettingsInput(settings));
+  }
 
   // Reset local drafts when the server gives us fresh rows (after a
   // save/delete triggers revalidatePath + router.refresh()) — adjusting
@@ -312,6 +346,34 @@ export function ConfigWorkspace({
     }
   }
 
+  function updateSettings(patch: Partial<ModelSettingsInput>) {
+    setSettingsDraft((prev) => ({ ...prev, ...patch }));
+  }
+
+  const healthWeightSum =
+    settingsDraft.health_weight_qualitative + settingsDraft.health_weight_talent + settingsDraft.health_weight_adverse;
+
+  async function saveSettings() {
+    if (settingsDraft.tier_a_min <= settingsDraft.tier_b_min) {
+      toast.error("Tier A threshold must be higher than Tier B.");
+      return;
+    }
+    if (healthWeightSum !== 100) {
+      toast.error("Account health weights must sum to 100", { description: `Currently ${healthWeightSum}.` });
+      return;
+    }
+    setSavingSettings(true);
+    try {
+      await saveModelSettings(settingsDraft);
+      toast.success("Settings saved", { description: "Applies on the next score or re-score." });
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to save settings", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   async function toggleActive(row: SectorTaxonomyRow, active: boolean) {
     setPendingSectorId(row.id);
     try {
@@ -339,7 +401,7 @@ export function ConfigWorkspace({
   return (
     <div className="flex flex-col gap-6">
       <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="pt-6">
+        <CardContent>
           <p className="text-sm font-semibold">The model is config, not code.</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Weights, bands and target sectors are set per ICP. Changes apply on the next score or re-score, with no
@@ -590,6 +652,226 @@ export function ConfigWorkspace({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div>
+        <p className="mb-3 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Shared base · all profiles</p>
+
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tier thresholds</CardTitle>
+              <CardDescription>Total score maps to a tier. Shown with confidence so a thin-data Tier A is visible.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+                <span className="h-full bg-slate-400" style={{ width: `${settingsDraft.tier_b_min}%` }} />
+                <span className="h-full bg-primary" style={{ width: `${settingsDraft.tier_a_min - settingsDraft.tier_b_min}%` }} />
+                <span className="h-full bg-emerald-500" style={{ width: `${100 - settingsDraft.tier_a_min}%` }} />
+              </div>
+              <div className="flex flex-wrap items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
+                  <Label className="text-sm font-normal">Tier A ≥</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-20"
+                    value={settingsDraft.tier_a_min}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ tier_a_min: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="size-2.5 shrink-0 rounded-full bg-primary" />
+                  <Label className="text-sm font-normal">Tier B ≥</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-20"
+                    value={settingsDraft.tier_b_min}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ tier_b_min: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="size-2.5 shrink-0 rounded-full bg-slate-400" />
+                  Tier C below {settingsDraft.tier_b_min}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <div>
+                <CardTitle>Contact pull rule</CardTitle>
+                <CardDescription>On demand keeps contact-credit spend to accounts the team actually opens.</CardDescription>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Switch
+                  checked={settingsDraft.contact_pull_on_demand}
+                  disabled={savingSettings}
+                  onCheckedChange={(v) => updateSettings({ contact_pull_on_demand: v })}
+                />
+                <span className="text-sm text-muted-foreground">{settingsDraft.contact_pull_on_demand ? "On demand" : "Automatic"}</span>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Enrichment run settings</CardTitle>
+              <CardDescription>Used to estimate cost before an enrichment run, and to avoid re-pulling fresh records.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Indicative price per credit</Label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-muted-foreground">£</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className="h-8 w-24"
+                    placeholder="—"
+                    value={settingsDraft.indicative_price_per_credit ?? ""}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ indicative_price_per_credit: e.target.value === "" ? null : Number(e.target.value) })}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Leave blank to hide the £ figure</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Re-pull after</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    className="h-8 w-20"
+                    value={settingsDraft.re_pull_after_days}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ re_pull_after_days: Number(e.target.value) })}
+                  />
+                  <span className="text-sm text-muted-foreground">days</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Currency &amp; exchange rates</CardTitle>
+              <CardDescription>All revenue is shown in US dollars. Source figures in other currencies are converted at these rates.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">£1 =</span>
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  className="h-8 w-24"
+                  value={settingsDraft.gbp_to_usd_rate}
+                  disabled={savingSettings}
+                  onChange={(e) => updateSettings({ gbp_to_usd_rate: Number(e.target.value) })}
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">€1 =</span>
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  className="h-8 w-24"
+                  value={settingsDraft.eur_to_usd_rate}
+                  disabled={savingSettings}
+                  onChange={(e) => updateSettings({ eur_to_usd_rate: Number(e.target.value) })}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">US-domiciled companies are already in USD.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between">
+              <div>
+                <CardTitle>Account health score</CardTitle>
+                <CardDescription>
+                  How live-client health is weighted. Applied to the Accounts view. Adverse events subtract from the
+                  blended qualitative + talent score.
+                </CardDescription>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "gap-1 border-transparent shrink-0",
+                  healthWeightSum === 100 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
+                )}
+              >
+                {healthWeightSum === 100 ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+                Total {healthWeightSum}%
+              </Badge>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {(
+                [
+                  { key: "health_weight_qualitative" as const, label: "Qualitative ratings", color: "var(--primary)" },
+                  { key: "health_weight_talent" as const, label: "Talent & retention", color: "#10b981" },
+                  { key: "health_weight_adverse" as const, label: "Adverse-events penalty", color: "#ef4444" },
+                ]
+              ).map(({ key, label, color }) => (
+                <div key={key} className="flex items-center gap-3">
+                  <span className="h-2.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+                  <Label className="w-44 shrink-0 text-sm font-normal">{label}</Label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<ModelSettingsInput>)}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-current"
+                    style={{ color }}
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<ModelSettingsInput>)}
+                    className="h-8 w-16 shrink-0 tabular-nums"
+                  />
+                  <span className="w-3 shrink-0 text-xs text-muted-foreground">%</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-1.5 border-t pt-4">
+                <Label className="text-sm font-normal text-muted-foreground">Review reminder after</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="h-8 w-20"
+                  value={settingsDraft.review_reminder_days}
+                  disabled={savingSettings}
+                  onChange={(e) => updateSettings({ review_reminder_days: Number(e.target.value) })}
+                />
+                <span className="text-sm text-muted-foreground">days without a client-scorecard review</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              {savingSettings && <Loader2 className="animate-spin" />}
+              Save settings
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

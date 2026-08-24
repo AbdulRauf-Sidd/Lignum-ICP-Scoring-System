@@ -76,3 +76,34 @@ export async function setSectorTaxonomyActive(id: string, active: boolean) {
   if (error) throw new Error(`Failed to update sector taxonomy: ${error.message}`);
   revalidatePath("/admin/config");
 }
+
+export interface ModelSettingsInput {
+  tier_a_min: number;
+  tier_b_min: number;
+  contact_pull_on_demand: boolean;
+  indicative_price_per_credit: number | null;
+  re_pull_after_days: number;
+  gbp_to_usd_rate: number;
+  eur_to_usd_rate: number;
+  health_weight_qualitative: number;
+  health_weight_talent: number;
+  health_weight_adverse: number;
+  review_reminder_days: number;
+}
+
+export async function saveModelSettings(input: ModelSettingsInput) {
+  if (input.tier_a_min <= input.tier_b_min) {
+    throw new Error("Tier A threshold must be higher than Tier B.");
+  }
+  const healthSum = input.health_weight_qualitative + input.health_weight_talent + input.health_weight_adverse;
+  if (healthSum !== 100) {
+    throw new Error(`Account health weights must sum to 100 (currently ${healthSum}).`);
+  }
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("model_settings")
+    .upsert({ id: "global", ...input, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  if (error) throw new Error(`Failed to save settings: ${error.message}`);
+  revalidatePath("/admin/config");
+}

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import { Badge } from "@/components/ui/badge";
+import { LinkLoadingIcon } from "@/components/layout/link-loading-icon";
 
 const GROUP_ORDER = ["Prospects", "Oversight", "Accounts", "Admin"] as const;
 
@@ -32,6 +33,7 @@ function NavLink({
     >
       <item.icon className="size-4 shrink-0" />
       <span className="flex-1">{item.label}</span>
+      <LinkLoadingIcon />
       {!!count && (
         <Badge
           variant={active ? "secondary" : "outline"}

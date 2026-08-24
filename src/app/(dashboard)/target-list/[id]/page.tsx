@@ -13,6 +13,7 @@ import { getContactsForCompanies } from "@/lib/data/contacts";
 export const dynamic = "force-dynamic";
 import { ScoreRing, ScoreBar } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
+import { PageHeader } from "@/components/shared/page-header";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 
 export default async function CompanyDetailPage({ params }: PageProps<"/target-list/[id]">) {
@@ -24,6 +25,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
 
   return (
     <div>
+      <PageHeader title="Target list" description={company.name} />
       <Button variant="ghost" size="sm" className="mb-4 -ml-2 text-muted-foreground" asChild>
         <Link href="/target-list">
           <ArrowLeft /> Back to target list

@@ -129,3 +129,36 @@
     @apply font-sans;
   }
 }
+
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-old(.dashboard-page) {
+  animation: 140ms ease-in both dashboard-page-exit;
+}
+
+::view-transition-new(.dashboard-page) {
+  animation: 240ms ease-out both dashboard-page-enter;
+}
+
+@keyframes dashboard-page-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes dashboard-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(.dashboard-page),
+  ::view-transition-new(.dashboard-page) {
+    animation-duration: 0s;
+  }
+}

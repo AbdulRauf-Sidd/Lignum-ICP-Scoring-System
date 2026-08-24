@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, X, MapPin, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { Check, X, MapPin, Globe, Loader2, TriangleAlert, CheckCheck, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,27 @@ function CompanyAvatar({ id, name }: { id: string; name: string }) {
   );
 }
 
+// All the chips shown on a card — includes the routine "why it's here" reason,
+// which alone shouldn't block a bulk approve (see isFlagged below).
+function getWarnings(company: Company): string[] {
+  const warnings: string[] = [];
+  if (company.triageReason === "entity_ambiguous") {
+    warnings.push(`${company.candidateEntities.length} candidate match${company.candidateEntities.length === 1 ? "" : "es"}`);
+  }
+  if (company.triageReason === "low_confidence_sector") {
+    warnings.push("Low classification confidence");
+  }
+  if (company.matchFlag === "weak") warnings.push("Weak ICP match");
+  if (company.matchFlag === "no_match") warnings.push("No ICP match");
+  return warnings;
+}
+
+// A genuine concern beyond the routine triage reason — entity ambiguity always
+// needs a human pick, and a weak/no match is worth a second look before approving.
+function isFlagged(company: Company): boolean {
+  return company.triageReason === "entity_ambiguous" || company.matchFlag === "weak" || company.matchFlag === "no_match";
+}
+
 export function TriageWorkspace({ companies }: { companies: Company[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,6 +90,17 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     initialReason ?? "all",
   );
   const [pendingId, setPendingId] = React.useState<string | null>(null);
+  const [bulkApproving, setBulkApproving] = React.useState(false);
+  const [editingIds, setEditingIds] = React.useState<Set<string>>(new Set());
+
+  function toggleEditing(id: string) {
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const filtered = items.filter((c) => filter === "all" || c.triageReason === filter);
 
@@ -77,6 +109,10 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     entity_ambiguous: items.filter((c) => c.triageReason === "entity_ambiguous").length,
     low_confidence_sector: items.filter((c) => c.triageReason === "low_confidence_sector").length,
   };
+
+  const unresolved = items.filter((c) => (resolutions[c.id] ?? "pending") === "pending");
+  const flaggedCount = unresolved.filter(isFlagged).length;
+  const clearItems = unresolved.filter((c) => !isFlagged(c));
 
   async function approve(company: Company) {
     const edit = edits[company.id];
@@ -104,7 +140,8 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     const candidateId = candidateSelections[company.id];
     const candidate = company.candidateEntities.find((c) => c.id === candidateId);
     if (!candidate) {
-      toast.error("Select a candidate entity first");
+      setEditingIds((prev) => new Set(prev).add(company.id));
+      toast.error("Select a candidate entity first", { description: "Click a candidate below, then confirm." });
       return;
     }
     setPendingId(company.id);
@@ -122,8 +159,49 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     }
   }
 
+  async function bulkApproveClear() {
+    setBulkApproving(true);
+    try {
+      for (const company of clearItems) {
+        const edit = edits[company.id];
+        const sector = edit?.sector ?? company.proposedSector ?? company.sector;
+        const subSector = edit?.subSector ?? company.proposedSubSector ?? company.subSector;
+        await approveCompany(company.id, sector, subSector);
+        setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
+      }
+      toast.success(`Approved ${clearItems.length} clear account${clearItems.length === 1 ? "" : "s"}`, {
+        description: "Moved to the target list.",
+      });
+      router.refresh();
+    } catch (err) {
+      toast.error("Bulk approve failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setBulkApproving(false);
+    }
+  }
+
   return (
     <div>
+      {items.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3.5">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 h-full min-h-8 w-1 shrink-0 rounded-full bg-primary" />
+            <div>
+              <p className="text-sm font-semibold">Holding area — nothing reaches the target list until you approve it</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Each account was scored on the last run. Check the proposed sector and any flags, then approve, edit
+                or reject. <span className="font-medium text-foreground">{unresolved.length} awaiting review</span> ·{" "}
+                {flaggedCount} flagged · {clearItems.length} clear.
+              </p>
+            </div>
+          </div>
+          <Button onClick={bulkApproveClear} disabled={clearItems.length === 0 || bulkApproving} className="shrink-0">
+            {bulkApproving ? <Loader2 className="animate-spin" /> : <CheckCheck />}
+            Approve {clearItems.length} clear
+          </Button>
+        </div>
+      )}
+
       <div className="mb-6 grid grid-cols-3 gap-3">
         {(
           [
@@ -167,6 +245,8 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
               onReject={() => reject(c)}
               onConfirmEntity={() => confirmEntity(c)}
               isPending={pendingId === c.id}
+              editing={editingIds.has(c.id)}
+              onToggleEdit={() => toggleEditing(c.id)}
             />
           ))}
         </div>
@@ -186,6 +266,8 @@ function TriageCard({
   onReject,
   onConfirmEntity,
   isPending,
+  editing,
+  onToggleEdit,
 }: {
   company: Company;
   resolution: Resolution;
@@ -197,27 +279,20 @@ function TriageCard({
   onReject: () => void;
   onConfirmEntity: () => void;
   isPending: boolean;
+  editing: boolean;
+  onToggleEdit: () => void;
 }) {
   const sector = edit?.sector ?? company.proposedSector ?? "";
   const subSector = edit?.subSector ?? company.proposedSubSector ?? "";
   const subSectorOptions = SECTORS.find((s) => s.sector === sector)?.subSectors ?? [];
   const resolved = resolution !== "pending";
 
-  const warnings: string[] = [];
-  if (company.triageReason === "entity_ambiguous") {
-    warnings.push(`${company.candidateEntities.length} candidate match${company.candidateEntities.length === 1 ? "" : "es"}`);
-  }
-  if (company.triageReason === "low_confidence_sector") {
-    warnings.push("Low classification confidence");
-  }
-  if (company.matchFlag === "weak") warnings.push("Weak ICP match");
-  if (company.matchFlag === "no_match") warnings.push("No ICP match");
-
-  const flagged = warnings.length > 0 && !resolved;
+  const warnings = getWarnings(company);
+  const flagged = isFlagged(company) && !resolved;
 
   return (
     <Card className={cn(flagged && "border-amber-500/50")}>
-      <CardContent className="flex flex-col gap-4 pt-6">
+      <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <CompanyAvatar id={company.id} name={company.name} />
@@ -283,7 +358,7 @@ function TriageCard({
           </Badge>
         )}
 
-        {!resolved && company.triageReason === "entity_ambiguous" && (
+        {!resolved && editing && company.triageReason === "entity_ambiguous" && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Which company is this?</p>
             {company.candidateEntities.map((cand) => (
@@ -316,7 +391,7 @@ function TriageCard({
           </div>
         )}
 
-        {!resolved && company.triageReason === "low_confidence_sector" && (
+        {!resolved && editing && company.triageReason === "low_confidence_sector" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Sector</Label>
@@ -356,19 +431,24 @@ function TriageCard({
         )}
 
         {!resolved && (
-          <div className="flex justify-end gap-2 border-t pt-4">
-            <Button variant="outline" onClick={onReject} disabled={isPending}>
+          <div className="flex items-center justify-between border-t pt-4">
+            <div className="flex items-center gap-2">
+              {company.triageReason === "entity_ambiguous" ? (
+                <Button size="sm" onClick={onConfirmEntity} disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
+                </Button>
+              ) : (
+                <Button size="sm" onClick={onApprove} disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : <Check />} Approve
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={onToggleEdit} disabled={isPending}>
+                <Pencil /> {editing ? "Done" : "Edit"}
+              </Button>
+            </div>
+            <Button size="sm" variant="outline" onClick={onReject} disabled={isPending}>
               <X /> Reject
             </Button>
-            {company.triageReason === "entity_ambiguous" ? (
-              <Button onClick={onConfirmEntity} disabled={isPending}>
-                {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
-              </Button>
-            ) : (
-              <Button onClick={onApprove} disabled={isPending}>
-                {isPending ? <Loader2 className="animate-spin" /> : <Check />} Approve
-              </Button>
-            )}
           </div>
         )}
       </CardContent>

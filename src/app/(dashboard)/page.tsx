@@ -167,7 +167,7 @@ export default async function HomePage() {
       <PageHeader title="Insights" description="Your do-this-next summary, generated from the latest data" />
 
       <Card className="mb-6">
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">{formatDateHeading(now)}</p>
             <h2 className="mt-1.5 text-2xl font-semibold tracking-tight">
@@ -238,7 +238,7 @@ export default async function HomePage() {
         <div className="flex flex-col gap-6">
           {triageCount > 0 && (
             <Card className="border-primary/50 bg-primary/5">
-              <CardContent className="flex flex-col gap-3 pt-6">
+              <CardContent className="flex flex-col gap-3">
                 <div className="flex items-start gap-3">
                   <span className="h-8 w-1.5 shrink-0 rounded-full bg-primary" />
                   <div>

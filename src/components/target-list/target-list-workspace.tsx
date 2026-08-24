@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpDown, Archive, ArchiveRestore, Search, TriangleAlert, X } from "lucide-react";
+import { ArrowUpDown, Archive, ArchiveRestore, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ICP_NAMES, SECTORS } from "@/lib/constants";
-import { ScoreRing } from "@/components/shared/score-display";
+import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 import type { Company } from "@/lib/types";
@@ -69,6 +69,16 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const [archived, setArchived] = React.useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = React.useState(false);
   const [page, setPage] = React.useState(1);
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const subSectorOptions = tab === "all" ? [] : SECTORS.find((s) => s.sector === tab)?.subSectors ?? [];
 
@@ -162,7 +172,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
     setPage(1);
   }
 
-  const columnCount = view === "scorecard" ? 13 : 12;
+  const columnCount = view === "scorecard" ? 14 : 13;
 
   return (
     <div>
@@ -364,6 +374,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8" />
               <SortableHead label="Company" active={sortKey === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
               <TableHead>Sector</TableHead>
               {view === "scorecard" ? (
@@ -396,6 +407,9 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
                 view={view}
                 archived={archived.has(c.id)}
                 onToggleArchive={() => toggleArchive(c.id)}
+                expanded={expandedIds.has(c.id)}
+                onToggleExpand={() => toggleExpand(c.id)}
+                columnCount={columnCount}
               />
             ))}
             {sorted.length === 0 && (
@@ -517,16 +531,32 @@ function TargetListRow({
   view,
   archived,
   onToggleArchive,
+  expanded,
+  onToggleExpand,
+  columnCount,
 }: {
   company: Company;
   view: View;
   archived: boolean;
   onToggleArchive: () => void;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  columnCount: number;
 }) {
   const byKey = new Map(company.scoringBreakdown.map((c) => [c.key, c]));
   return (
-    <TableRow className={cn(archived && "opacity-50")}>
-      <TableCell>
+    <>
+      <TableRow className={cn(archived && "opacity-50")}>
+        <TableCell>
+          <button
+            onClick={onToggleExpand}
+            className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title={expanded ? "Hide scorecard" : "Show scorecard"}
+          >
+            <ChevronRight className={cn("size-4 transition-transform", expanded && "rotate-90")} />
+          </button>
+        </TableCell>
+        <TableCell>
         <div className="flex items-center gap-2.5">
           <CompanyAvatar id={company.id} name={company.name} />
           <div className="min-w-0">
@@ -587,12 +617,34 @@ function TargetListRow({
           <span className="text-sm text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell>
-        <Button variant="ghost" size="icon" onClick={onToggleArchive} title={archived ? "Restore" : "Archive"}>
-          {archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-        </Button>
-      </TableCell>
-    </TableRow>
+        <TableCell>
+          <Button variant="ghost" size="icon" onClick={onToggleArchive} title={archived ? "Restore" : "Archive"}>
+            {archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+          </Button>
+        </TableCell>
+      </TableRow>
+      {expanded && (
+        <TableRow className={cn(archived && "opacity-50")}>
+          <TableCell colSpan={columnCount} className="bg-muted/30 p-0">
+            <div className="flex flex-col gap-3 px-6 py-4">
+              <p className="text-sm text-muted-foreground">{company.oneLineReason}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {company.scoringBreakdown.map((cat) => (
+                  <ScoreBar
+                    key={cat.key}
+                    label={cat.label}
+                    subScore={cat.subScore}
+                    weight={cat.weight}
+                    contribution={cat.contribution}
+                    excluded={cat.excluded}
+                  />
+                ))}
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   );
 }
 

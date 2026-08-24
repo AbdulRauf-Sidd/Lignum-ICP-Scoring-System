@@ -13,13 +13,7 @@ export default async function ImportPage() {
         title="Import & queue"
         description="Add companies by CSV or manually, then run the validation gate and enrichment. Sector and sub-sector are assigned automatically during classification."
       />
-      <ImportWorkspace
-        inProgressCount={stats.inProgressCount}
-        failedCount={stats.failedCount}
-        scoredThisWeekCount={stats.scoredThisWeekCount}
-        queue={queue}
-        profiles={profiles}
-      />
+      <ImportWorkspace scoredThisWeekCount={stats.scoredThisWeekCount} queue={queue} profiles={profiles} />
     </div>
   );
 }

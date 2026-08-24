@@ -41,8 +41,8 @@ export interface UsageRunDetail extends UsageRunRow {
 }
 
 export interface UsageSummary {
-  actionCounts: Record<string, number>;
-  totalCostUsd: number;
+  actionCredits: Record<string, number>;
+  totalCredits: number;
 }
 
 export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
@@ -105,15 +105,16 @@ export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
 }
 
 export function summarizeUsageRuns(runs: UsageRunDetail[]): UsageSummary {
-  const actionCounts: Record<string, number> = {};
-  let totalCostUsd = 0;
+  const actionCredits: Record<string, number> = {};
+  let totalCredits = 0;
   for (const run of runs) {
     for (const item of run.items) {
-      actionCounts[item.action] = (actionCounts[item.action] ?? 0) + 1;
-      totalCostUsd += item.costUsd ?? 0;
+      const credits = item.creditsUsed ?? 0;
+      actionCredits[item.action] = (actionCredits[item.action] ?? 0) + credits;
+      totalCredits += credits;
     }
   }
-  return { actionCounts, totalCostUsd };
+  return { actionCredits, totalCredits };
 }
 
 export async function getRecentUsageRuns(limit = 8): Promise<UsageRun[]> {

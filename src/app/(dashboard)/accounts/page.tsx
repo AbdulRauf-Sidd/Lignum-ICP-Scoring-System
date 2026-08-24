@@ -14,9 +14,9 @@ export default async function AccountsPage() {
     <div>
       <PageHeader
         title="Accounts"
-        description="Companies that have converted to clients, with monitoring, qualitative scoring and manual Talent Insights."
+        description="Live clients — health, talent and adverse-event monitoring."
       />
-      <AccountsWorkspace data={data} now={new Date().toISOString()} />
+      <AccountsWorkspace data={data} />
     </div>
   );
 }

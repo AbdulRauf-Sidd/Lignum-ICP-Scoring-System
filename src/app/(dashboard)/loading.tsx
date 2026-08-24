@@ -1,19 +1,15 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoaderCircle } from "lucide-react";
 
 // Shown instantly on every dashboard navigation while the destination
 // page's live Supabase queries resolve — without this, force-dynamic pages
-// leave the click feeling frozen until the round-trip finishes.
+// leave the click feeling frozen until the round-trip finishes. A generic
+// content skeleton doesn't work here since every page has a different shape
+// (and several no longer have the stat-tile row this used to mimic), so a
+// plain spinner that can't go stale is more honest than a fake layout.
 export default function DashboardLoading() {
   return (
-    <div>
-      <Skeleton className="h-8 w-64" />
-      <Skeleton className="mt-2 h-4 w-96" />
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 rounded-lg" />
-        ))}
-      </div>
-      <Skeleton className="mt-6 h-64 rounded-lg" />
+    <div className="flex h-[60vh] items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-200">
+      <LoaderCircle className="size-8 animate-spin text-primary" aria-label="Loading page" role="status" />
     </div>
   );
 }

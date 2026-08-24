@@ -70,13 +70,16 @@ function Avatar({ id, name, className }: { id: string; name: string; className?:
   );
 }
 
-function StatTile({ label, value, tone }: { label: string; value: number; tone?: string }) {
-  return (
-    <div className="rounded-lg border px-3 py-2.5">
-      <p className={cn("text-2xl font-semibold leading-none", tone)}>{value}</p>
-      <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-    </div>
-  );
+// `seniority` is unpopulated on every real contact today — inferred from the
+// real job title instead of leaving the pill blank everywhere.
+function deriveSeniority(title: string | null): string | null {
+  if (!title) return null;
+  if (/\b(chief|chef|ceo|cfo|coo|cto|cmo|president|founder|owner|partner)\b/i.test(title)) return "C-Suite";
+  if (/\bvice president|\bvp\b/i.test(title)) return "VP";
+  if (/\bhead of\b/i.test(title)) return "Head";
+  if (/\bdirector\b/i.test(title)) return "Director";
+  if (/\bmanager\b/i.test(title)) return "Manager";
+  return null;
 }
 
 function PillGroup<T extends string>({
@@ -202,13 +205,6 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
 
   return (
     <div>
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Companies" value={groups.length} />
-        <StatTile label="Contacts" value={allContacts.length} />
-        <StatTile label="Enriched" value={enrichedCount} tone="text-emerald-600 dark:text-emerald-400" />
-        <StatTile label="High quality email" value={allContacts.filter((c) => c.email_quality === "high").length} />
-      </div>
-
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Sort</span>
@@ -290,22 +286,17 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
           const groupKey = `group:${company.id}`;
           return (
             <Card key={company.id}>
-              <CardContent className="pt-6">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    {ids.length > 0 && (
-                      <Checkbox checked={groupAllSelected} onCheckedChange={() => toggleGroup(company.id, ids)} />
-                    )}
+              <CardContent>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
                     <Avatar id={company.id} name={company.name} className="size-9 text-sm" />
                     <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold">{company.name}</p>
+                      <p className="text-base font-semibold">{company.name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
                         <TierBadge tier={company.tier} />
                         <span className="text-xs text-muted-foreground">
                           score {company.score !== null ? Math.round(company.score) : "—"}
                         </span>
-                      </div>
-                      <div className="mt-1 flex items-center gap-1.5">
                         <SectorBadge sector={company.sector} className="text-[11px]" />
                         <span className="text-xs text-muted-foreground">{company.subSector}</span>
                       </div>
@@ -316,6 +307,11 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                       <span className="text-xs text-muted-foreground">
                         {groupEnrichedCount} of {groupContacts.length} enriched
                       </span>
+                    )}
+                    {ids.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => toggleGroup(company.id, ids)}>
+                        {groupAllSelected ? "Deselect group" : "Select group"}
+                      </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => handleFindContacts(company)} disabled={isFinding}>
                       {isFinding ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
@@ -341,10 +337,11 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                   <div className="overflow-hidden rounded-lg border">
                     {groupContacts.map((ct, i) => {
                       const contactKey = `contact:${ct.id}`;
+                      const seniority = ct.seniority ?? deriveSeniority(ct.title);
                       return (
                         <div
                           key={ct.id}
-                          className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5", i > 0 && "border-t")}
+                          className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3.5", i > 0 && "border-t")}
                         >
                           <div className="w-5 shrink-0">
                             {ct.status === "listed" && (
@@ -352,15 +349,15 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                             )}
                           </div>
                           <div className="flex min-w-48 flex-1 items-center gap-2.5">
-                            <Avatar id={ct.id} name={ct.name} className="size-7" />
+                            <Avatar id={ct.id} name={ct.name} className="size-8" />
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">{ct.name}</p>
                               <p className="truncate text-xs text-muted-foreground">{ct.title}</p>
                             </div>
                           </div>
-                          {ct.seniority && (
-                            <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] text-muted-foreground">
-                              {ct.seniority}
+                          {seniority && (
+                            <Badge variant="outline" className="w-20 shrink-0 justify-center text-[10px] font-medium text-muted-foreground">
+                              {seniority}
                             </Badge>
                           )}
                           <div className="min-w-40 flex-1">
@@ -375,17 +372,15 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                             )}
                           </div>
                           <div className="w-36 shrink-0">
-                            {ct.phone ? (
-                              <span className="flex items-center gap-1.5 text-sm">
-                                <Phone className="size-3.5 text-muted-foreground" />
-                                <span className="text-[10px] text-muted-foreground">DIR</span> {ct.phone}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <Phone className="size-3.5" />
-                                <span className="text-[10px]">DIR</span> ••• ••• ••••
-                              </span>
-                            )}
+                            <span className="flex items-center gap-1.5 text-sm">
+                              <Phone className="size-3.5 text-muted-foreground" />
+                              <span className="text-[10px] text-muted-foreground">DIR</span>
+                              {ct.phone ? ct.phone : <span className="text-muted-foreground">••• ••• ••••</span>}
+                            </span>
+                            <span className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Phone className="size-3.5 opacity-0" />
+                              <span className="text-[10px]">MOB</span> —
+                            </span>
                           </div>
                           {ct.status !== "listed" && (
                             <Badge

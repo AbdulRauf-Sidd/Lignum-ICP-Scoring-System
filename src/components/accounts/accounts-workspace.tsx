@@ -99,18 +99,8 @@ function RatingBar({
   );
 }
 
-function StatTile({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
-  return (
-    <div className="rounded-lg border px-3 py-2.5">
-      <p className={cn("text-2xl font-semibold leading-none", tone)}>{value}</p>
-      <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-    </div>
-  );
-}
-
-export function AccountsWorkspace({ data, now }: { data: AccountsData; now: string }) {
+export function AccountsWorkspace({ data }: { data: AccountsData }) {
   const router = useRouter();
-  const nowMs = new Date(now).getTime();
   const { companies, records, adverseEvents } = data;
   const [activeId, setActiveId] = React.useState<string | null>(companies[0]?.id ?? null);
   const [savingQualitative, setSavingQualitative] = React.useState(false);
@@ -191,17 +181,6 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
     }
   }
 
-  const refreshDueCount = companies.filter((c) => {
-    const reviewedAt = records[c.id]?.qualitative_reviewed_at ?? null;
-    const daysSince = reviewedAt ? Math.round((nowMs - new Date(reviewedAt).getTime()) / 86_400_000) : null;
-    return daysSince === null || daysSince > 90;
-  }).length;
-  const totalAdverseEvents = Object.values(adverseEvents).reduce((sum, events) => sum + events.length, 0);
-  const healthScores = companies
-    .map((c) => records[c.id]?.health_score)
-    .filter((s): s is number => s !== null && s !== undefined);
-  const avgHealthScore = healthScores.length ? Math.round(healthScores.reduce((a, b) => a + b, 0) / healthScores.length) : null;
-
   if (companies.length === 0) {
     return (
       <Card>
@@ -214,14 +193,7 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
 
   return (
     <div>
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Clients" value={companies.length} />
-        <StatTile label="Refresh due" value={refreshDueCount} tone={refreshDueCount > 0 ? "text-amber-600 dark:text-amber-400" : undefined} />
-        <StatTile label="Adverse events" value={totalAdverseEvents} tone={totalAdverseEvents > 0 ? "text-destructive" : undefined} />
-        <StatTile label="Avg health score" value={avgHealthScore ?? "—"} />
-      </div>
-
-      <div className="mb-6 flex flex-nowrap items-center gap-2.5 overflow-x-auto pb-1">
+      <div className="mb-6 flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
         {companies.map((c) => {
           const record = records[c.id];
           const meta = healthMeta(record?.health_score ?? null);
@@ -231,14 +203,15 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
               key={c.id}
               onClick={() => setActiveId(c.id)}
               className={cn(
-                "flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
+                "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
                 isActive ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
               )}
             >
-              <Avatar id={c.id} name={c.name} className="size-8 text-xs" />
+              <Avatar id={c.id} name={c.name} className="size-7 text-[11px]" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{c.name}</p>
                 <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <span className={cn("size-1.5 shrink-0 rounded-full", meta.bar)} />
                   {record?.health_score ?? "—"} · {meta.label}
                 </p>
               </div>
@@ -255,7 +228,7 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
             const qualAvg = draft ? (Object.values(draft).reduce((a, b) => a + b, 0) / RATING_FIELDS.length).toFixed(1) : "—";
             return (
               <Card>
-                <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                <CardContent className="flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <Avatar id={active.id} name={active.name} className="size-14 text-lg" />
                     <div>
@@ -269,6 +242,10 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
                         <span className="text-sm text-muted-foreground">{active.domain}</span>
                         <SectorBadge sector={active.sector} />
                         {active.subSector && <span className="text-xs text-muted-foreground">{active.subSector}</span>}
+                        <TierBadge tier={active.tier} />
+                        <span className="text-xs text-muted-foreground">
+                          ICP {active.score !== null ? Math.round(active.score) : "—"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -297,34 +274,26 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
             );
           })()}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Company details</CardTitle>
-              <CardDescription>From classification &amp; scoring — no separate firmographics feed is wired up yet.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div>
-                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Sector</p>
-                  <p className="mt-1 text-sm font-medium">{active.sector || "—"}</p>
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Firmographics · from enrichment</p>
+              <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
+                Not yet wired
+              </Badge>
+            </div>
+            <Card>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  {["Revenue", "Headcount", "Sites", "HQ", "Founded", "Credit", "Risk", "Ownership"].map((label) => (
+                    <div key={label}>
+                      <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-muted-foreground">—</p>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Sub-sector</p>
-                  <p className="mt-1 text-sm font-medium">{active.subSector || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Tier</p>
-                  <div className="mt-1">
-                    <TierBadge tier={active.tier} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">ICP score</p>
-                  <p className="mt-1 text-sm font-medium tabular-nums">{active.score !== null ? Math.round(active.score) : "—"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
@@ -339,6 +308,9 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
                       : "Not yet reviewed"}
                   </CardDescription>
                 </div>
+                <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
+                  Manual · 1-5
+                </Badge>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 {RATING_FIELDS.map(({ key, label }) => (
@@ -359,11 +331,13 @@ export function AccountsWorkspace({ data, now }: { data: AccountsData; now: stri
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="flex-row items-start justify-between">
                 <CardTitle className="flex items-center gap-1.5">
                   <Briefcase className="size-4" /> Talent Insights
                 </CardTitle>
-                <CardDescription>Manual entry.</CardDescription>
+                <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
+                  Manual entry
+                </Badge>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-3">

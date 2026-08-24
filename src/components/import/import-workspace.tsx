@@ -63,24 +63,11 @@ type SubmitResult =
   | { kind: "success"; raw: unknown }
   | { kind: "error"; message: string; details?: unknown };
 
-function StatTile({ label, value, tone }: { label: string; value: number; tone?: string }) {
-  return (
-    <div className="rounded-lg border px-3 py-2.5">
-      <p className={`text-2xl font-semibold leading-none ${tone ?? ""}`}>{value}</p>
-      <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-    </div>
-  );
-}
-
 export function ImportWorkspace({
-  inProgressCount,
-  failedCount,
   scoredThisWeekCount,
   queue,
   profiles,
 }: {
-  inProgressCount: number;
-  failedCount: number;
   scoredThisWeekCount: number;
   queue: FlaggedCompany[];
   profiles: IcpProfileRow[];
@@ -154,6 +141,10 @@ export function ImportWorkspace({
   const validRows = rows.filter((r) => r.issue === null);
   const issueRows = rows.filter((r) => r.issue !== null);
 
+  const queuedCount = queue.filter((c) => c.status === "queued").length;
+  const enrichingCount = queue.filter((c) => c.status === "enriching").length;
+  const failedInQueueCount = queue.filter((c) => c.status === "failed").length;
+
   async function runBatch() {
     setReviewOpen(false);
     setSubmitting(true);
@@ -189,17 +180,13 @@ export function ImportWorkspace({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatTile label="In progress" value={inProgressCount} tone="text-primary" />
-        <StatTile label="Failed" value={failedCount} tone={failedCount > 0 ? "text-destructive" : undefined} />
-        <StatTile label="Scored this week" value={scoredThisWeekCount} tone="text-emerald-600 dark:text-emerald-400" />
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Upload CSV</CardTitle>
-            <CardDescription>Columns: company name, domain. Each row is checked as you add it.</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <UploadCloud className="size-4 text-muted-foreground" /> Upload a CSV
+            </CardTitle>
+            <CardDescription>Bulk add. Columns: company name, domain (domain required).</CardDescription>
           </CardHeader>
           <CardContent>
             <div
@@ -241,8 +228,10 @@ export function ImportWorkspace({
 
         <Card>
           <CardHeader>
-            <CardTitle>Add manually</CardTitle>
-            <CardDescription>Domain is mandatory; company name is recommended.</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="size-4 text-muted-foreground" /> Add manually
+            </CardTitle>
+            <CardDescription>Single company. The pipeline resolves the rest.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleManualAdd} className="flex h-full flex-col justify-center gap-3">
@@ -256,7 +245,9 @@ export function ImportWorkspace({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="manual-domain">Domain</Label>
+                <Label htmlFor="manual-domain">
+                  Domain <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="manual-domain"
                   placeholder="e.g. apexcoolingsystems.com"
@@ -265,7 +256,7 @@ export function ImportWorkspace({
                 />
               </div>
               <Button type="submit">
-                <Plus /> Add company
+                <Plus /> Add to batch
               </Button>
             </form>
           </CardContent>
@@ -294,8 +285,9 @@ export function ImportWorkspace({
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{p.icp_name || "Untitled"}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {p.target_sectors.length > 0 ? p.target_sectors.join(", ") : "No target sectors set"}
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      ICP {p.weight_icp_fit}% · Scale {p.weight_scale_footprint}% · Hiring {p.weight_hiring_growth}% ·
+                      Financial {p.weight_financial_viability}%
                     </p>
                   </div>
                 </div>
@@ -308,62 +300,80 @@ export function ImportWorkspace({
       {rows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Review & run</CardTitle>
-            <CardDescription>
-              {rows.length} in this batch · {validRows.length} ready · {issueRows.length} flagged
-            </CardDescription>
+            <CardTitle className="flex flex-wrap items-center gap-2.5">
+              Review & run
+              <span className="text-sm font-normal text-muted-foreground">{rows.length} in the queue</span>
+              <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                {validRows.length} ready
+              </Badge>
+              {issueRows.length > 0 && (
+                <Badge variant="outline" className="border-transparent bg-destructive/10 text-destructive">
+                  {issueRows.length} flagged
+                </Badge>
+              )}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {issueRows.length > 0 && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-                <p className="mb-2 text-sm font-medium text-destructive">Fix the domain or remove these before running</p>
-                <div className="flex flex-col gap-2">
-                  {issueRows.map((row) => (
-                    <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2">
-                      <div className="min-w-32">
-                        <p className={cn("text-sm", !row.name && "text-muted-foreground italic")}>{row.name || "—"}</p>
-                        <p className="text-xs text-destructive">{ISSUE_LABEL[row.issue as NonNullable<RowIssue>]}</p>
-                      </div>
-                      <Input
-                        value={row.domain}
-                        onChange={(e) => updateRowDomain(row.id, e.target.value)}
-                        placeholder="domain.com"
-                        className="h-8 flex-1"
-                      />
-                      <Button variant="outline" size="sm" onClick={() => removeRow(row.id)}>
-                        Remove
-                      </Button>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_240px]">
+              <div className="flex flex-col gap-4">
+                {issueRows.length > 0 && (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                    <p className="mb-2 text-sm font-medium text-destructive">Fix the domain or remove these before running</p>
+                    <div className="flex flex-col gap-2">
+                      {issueRows.map((row) => (
+                        <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2">
+                          <div className="min-w-32">
+                            <p className={cn("text-sm", !row.name && "text-muted-foreground italic")}>{row.name || "—"}</p>
+                            <p className="text-xs text-destructive">{ISSUE_LABEL[row.issue as NonNullable<RowIssue>]}</p>
+                          </div>
+                          <Input
+                            value={row.domain}
+                            onChange={(e) => updateRowDomain(row.id, e.target.value)}
+                            placeholder="domain.com"
+                            className="h-8 flex-1"
+                          />
+                          <Button variant="outline" size="sm" onClick={() => removeRow(row.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {validRows.length > 0 && (
-              <div className="overflow-hidden rounded-lg border">
-                {validRows.map((row, i) => (
-                  <div key={row.id} className={cn("flex items-center gap-2 px-3 py-2", i > 0 && "border-t")}>
-                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {row.name || <span className="text-muted-foreground italic">Unnamed</span>}
-                      <span className="ml-1.5 text-muted-foreground">{row.domain}</span>
-                    </span>
-                    <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => removeRow(row.id)}>
-                      <Trash2 className="size-3.5" />
-                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            <div>
-              <Button
-                disabled={validRows.length === 0 || issueRows.length > 0 || submitting}
-                onClick={() => setReviewOpen(true)}
-              >
-                {submitting && <Loader2 className="animate-spin" />}
-                Upload & run ({validRows.length} rows)
-              </Button>
+                {validRows.length > 0 && (
+                  <div className="overflow-hidden rounded-lg border">
+                    {validRows.map((row, i) => (
+                      <div key={row.id} className={cn("flex items-center gap-2 px-3 py-2", i > 0 && "border-t")}>
+                        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {row.name || <span className="text-muted-foreground italic">Unnamed</span>}
+                          <span className="ml-1.5 text-muted-foreground">{row.domain}</span>
+                        </span>
+                        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => removeRow(row.id)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 lg:border-l lg:pl-6">
+                <Button
+                  className="w-full"
+                  disabled={validRows.length === 0 || issueRows.length > 0 || submitting}
+                  onClick={() => setReviewOpen(true)}
+                >
+                  {submitting && <Loader2 className="animate-spin" />}
+                  Run enrichment
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  {issueRows.length > 0
+                    ? "Fix the flagged rows to enable the run"
+                    : `${validRows.length} row${validRows.length === 1 ? "" : "s"} will be sent`}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -373,7 +383,9 @@ export function ImportWorkspace({
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle>Enrichment queue</CardTitle>
-            <CardDescription>Companies currently queued, enriching, or failed.</CardDescription>
+            <CardDescription>
+              {queuedCount} queued · {enrichingCount} enriching · {failedInQueueCount} failed · {scoredThisWeekCount} scored this week
+            </CardDescription>
           </div>
           <Badge variant="outline" className="shrink-0 gap-1.5 border-transparent bg-muted text-muted-foreground">
             <span className={cn("size-1.5 rounded-full", queue.length > 0 ? "bg-primary" : "bg-muted-foreground/40")} />
