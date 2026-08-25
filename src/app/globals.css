@@ -130,23 +130,8 @@
   }
 }
 
-::view-transition {
-  pointer-events: none;
-}
-
-::view-transition-old(.dashboard-page) {
-  animation: 140ms ease-in both dashboard-page-exit;
-}
-
-::view-transition-new(.dashboard-page) {
+.page-transition-enter {
   animation: 240ms ease-out both dashboard-page-enter;
-}
-
-@keyframes dashboard-page-exit {
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
 }
 
 @keyframes dashboard-page-enter {
@@ -157,8 +142,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(.dashboard-page),
-  ::view-transition-new(.dashboard-page) {
+  .page-transition-enter {
     animation-duration: 0s;
   }
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { ViewTransition } from "react";
 import Link from "next/link";
 import { Menu, LogOut, Bell, Plus, ChevronUp } from "lucide-react";
 import { AutoRefresh } from "@/components/layout/auto-refresh";
@@ -11,6 +10,11 @@ import {
   PageHeaderProvider,
   usePageHeaderContent,
 } from "@/components/layout/page-header-context";
+import {
+  PageTransitionProvider,
+  usePageTransition,
+  PageLoadingOverlay,
+} from "@/components/layout/page-transition-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +45,26 @@ export function AppShell({
   triageCount: number;
   user: SessionUser;
 }) {
+  return (
+    <PageTransitionProvider>
+      <AppShellInner triageCount={triageCount} user={user}>
+        {children}
+      </AppShellInner>
+    </PageTransitionProvider>
+  );
+}
+
+function AppShellInner({
+  children,
+  triageCount,
+  user,
+}: {
+  children: React.ReactNode;
+  triageCount: number;
+  user: SessionUser;
+}) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const { contentRef } = usePageTransition();
 
   const counts = { triage: triageCount };
   const isAdmin = user.role === "admin";
@@ -102,11 +125,16 @@ export function AppShell({
           </header>
 
           <main className="flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
-              <ViewTransition default="dashboard-page">{children}</ViewTransition>
+            <div
+              ref={contentRef}
+              className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8"
+            >
+              {children}
             </div>
           </main>
         </div>
+
+        <PageLoadingOverlay />
       </div>
     </PageHeaderProvider>
   );

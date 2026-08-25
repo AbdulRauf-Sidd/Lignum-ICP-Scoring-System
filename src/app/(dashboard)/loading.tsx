@@ -1,15 +1,11 @@
-import { LoaderCircle } from "lucide-react";
-
-// Shown instantly on every dashboard navigation while the destination
-// page's live Supabase queries resolve — without this, force-dynamic pages
-// leave the click feeling frozen until the round-trip finishes. A generic
-// content skeleton doesn't work here since every page has a different shape
-// (and several no longer have the stat-tile row this used to mimic), so a
-// plain spinner that can't go stale is more honest than a fake layout.
+// Renders nothing visible — PageLoadingOverlay (page-transition-context.tsx)
+// owns the actual loading UI, positioned independently of page content so it
+// can't drift as content reflows. This marker's only job is to exist in the
+// DOM for exactly as long as Suspense is showing this fallback: that's the
+// one signal that's *guaranteed* to match real content readiness (unlike
+// useTransition's isPending, which resolves before the destination page's
+// data has even finished downloading — verified by tracing network timing).
+// PageLoadingOverlay watches for this marker via MutationObserver.
 export default function DashboardLoading() {
-  return (
-    <div className="flex h-[60vh] items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-200">
-      <LoaderCircle className="size-8 animate-spin text-primary" aria-label="Loading page" role="status" />
-    </div>
-  );
+  return <div data-page-loading-fallback className="hidden" aria-hidden="true" />;
 }

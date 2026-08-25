@@ -348,15 +348,15 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                               <Checkbox checked={selected.has(ct.id)} onCheckedChange={() => toggleOne(ct.id)} />
                             )}
                           </div>
-                          <div className="flex min-w-48 flex-1 items-center gap-2.5">
-                            <Avatar id={ct.id} name={ct.name} className="size-8" />
+                          <div className="flex min-w-56 flex-1 items-center gap-2.5">
+                            <Avatar id={ct.id} name={ct.name} className="size-8 shrink-0" />
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">{ct.name}</p>
-                              <p className="truncate text-xs text-muted-foreground">{ct.title}</p>
+                              <p className="text-xs text-muted-foreground">{ct.title}</p>
                             </div>
                           </div>
                           {seniority && (
-                            <Badge variant="outline" className="w-20 shrink-0 justify-center text-[10px] font-medium text-muted-foreground">
+                            <Badge variant="outline" className="shrink-0 text-[10px] font-medium text-muted-foreground">
                               {seniority}
                             </Badge>
                           )}
@@ -365,9 +365,13 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                               <span className="flex items-center gap-1.5 text-sm">
                                 <Mail className="size-3.5 text-muted-foreground" /> {ct.email}
                               </span>
-                            ) : (
+                            ) : ct.status === "listed" ? (
                               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                                 <Mail className="size-3.5" /> •••••@{company.domain}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <Mail className="size-3.5" /> — no email on file
                               </span>
                             )}
                           </div>
@@ -375,7 +379,13 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                             <span className="flex items-center gap-1.5 text-sm">
                               <Phone className="size-3.5 text-muted-foreground" />
                               <span className="text-[10px] text-muted-foreground">DIR</span>
-                              {ct.phone ? ct.phone : <span className="text-muted-foreground">••• ••• ••••</span>}
+                              {ct.phone ? (
+                                ct.phone
+                              ) : ct.status === "listed" ? (
+                                <span className="text-muted-foreground">••• ••• ••••</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
                             </span>
                             <span className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                               <Phone className="size-3.5 opacity-0" />
