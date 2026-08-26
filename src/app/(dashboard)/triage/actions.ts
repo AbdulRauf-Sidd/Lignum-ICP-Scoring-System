@@ -18,7 +18,7 @@ export async function approveCompany(companyId: string, sector: string, subSecto
 
 export async function confirmEntityResolution(
   companyId: string,
-  candidate: { id: string; source: "creditsafe" | "creditsafe_website_only" | "creditsafe_name_only" | "cognism" },
+  candidate: { creditsafeCompanyId: string | null; cognismCompanyId: string | null },
 ) {
   const webhookUrl = process.env.N8N_RESOLVE_WEBHOOK_URL;
   const webhookSecret = process.env.N8N_WEBHOOK_SECRET;
@@ -29,9 +29,8 @@ export async function confirmEntityResolution(
 
   const payload = {
     company_id: companyId,
-    ...(candidate.source === "cognism"
-      ? { cognism_company_id: candidate.id }
-      : { creditsafe_company_id: candidate.id }),
+    ...(candidate.creditsafeCompanyId ? { creditsafe_company_id: candidate.creditsafeCompanyId } : {}),
+    ...(candidate.cognismCompanyId ? { cognism_company_id: candidate.cognismCompanyId } : {}),
   };
 
   let upstream: Response;

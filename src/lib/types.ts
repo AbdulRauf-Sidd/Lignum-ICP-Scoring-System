@@ -37,7 +37,13 @@ export interface CandidateEntity {
   domain: string;
   location: string;
   matchScore: number;
-  source: "creditsafe" | "creditsafe_website_only" | "creditsafe_name_only" | "cognism";
+  source: "creditsafe" | "creditsafe_website_only" | "creditsafe_name_only";
+  // The Cognism entity this candidate was scored against — every candidate
+  // shares the same one, since there's only ever a single Cognism match to
+  // pair Creditsafe candidates against. Null when Cognism had no match at all.
+  cognismId: string | null;
+  cognismName: string | null;
+  cognismMatchScore: number | null;
 }
 
 export interface SourcedField {

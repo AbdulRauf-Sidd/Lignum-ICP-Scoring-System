@@ -60,7 +60,6 @@ const SOURCE_LABELS: Record<string, string> = {
   creditsafe: "Creditsafe",
   creditsafe_website_only: "Creditsafe — website match",
   creditsafe_name_only: "Creditsafe — name match",
-  cognism: "Cognism",
 };
 
 function sourceLabel(source: string): string {
@@ -174,7 +173,10 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     }
     setPendingId(company.id);
     try {
-      await confirmEntityResolution(company.id, { id: candidate.id, source: candidate.source });
+      await confirmEntityResolution(company.id, {
+        creditsafeCompanyId: candidate.id,
+        cognismCompanyId: candidate.cognismId,
+      });
       setResolutions((prev) => ({ ...prev, [company.id]: "resolving" }));
       toast.success(`Entity confirmed for ${company.name}`, {
         description: "Reprocessing — it'll return to triage for approval once scoring finishes, or leave the queue if nothing else needs review.",
@@ -414,7 +416,21 @@ function TriageCard({
                     <span className="flex items-center gap-1">
                       <MapPin className="size-3" /> {cand.location}
                     </span>
-                    <span>{sourceLabel(cand.source)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline" className="border-transparent bg-sky-500/10 text-[10px] text-sky-600 dark:text-sky-400">
+                      {sourceLabel(cand.source)}
+                    </Badge>
+                    {cand.cognismName ? (
+                      <Badge variant="outline" className="border-transparent bg-violet-500/10 text-[10px] text-violet-600 dark:text-violet-400">
+                        Cognism: {cand.cognismName}
+                        {cand.cognismMatchScore !== null ? ` (${cand.cognismMatchScore}%)` : ""}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-transparent bg-muted text-[10px] text-muted-foreground">
+                        No Cognism match
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <Badge variant="outline" className="shrink-0">
