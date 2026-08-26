@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowUpDown, Archive, ArchiveRestore, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -176,8 +177,9 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
 
   return (
     <div>
-      {/* ICP profile tabs — bordered cards with count, avg score and a tier split bar */}
-      <div className="mb-4 flex flex-nowrap gap-2.5 overflow-x-auto pb-1">
+      {/* ICP profile tabs — bordered tiles with count, avg score and a tier split bar */}
+      <Card className="mb-4">
+      <CardContent className="flex flex-nowrap gap-2.5 overflow-x-auto">
         {[...ICP_NAMES, "all"].map((name) => {
           const stats = icpStats.get(name) ?? computeStats([]);
           const active = tab === name;
@@ -222,18 +224,23 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
             </button>
           );
         })}
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Stat tiles for the active profile */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <Card className="mb-4">
+      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile label={tab === "all" ? "All accounts" : "In this profile"} value={activeStats.count} sublabel={tab === "all" ? undefined : tab} />
         <StatTile label="Tier A" value={activeStats.tierA} tone="text-emerald-600 dark:text-emerald-400" sublabel="priority" />
         <StatTile label="Tier B" value={activeStats.tierB} tone="text-primary" sublabel="qualify" />
         <StatTile label="Avg ICP score" value={activeStats.avgScore ?? "—"} sublabel="of 100" />
         <StatTile label="Weak matches" value={activeStats.weak} tone={activeStats.weak > 0 ? "text-destructive" : undefined} sublabel="review" />
-      </div>
+      </CardContent>
+      </Card>
 
-      <div className="mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
+      <Card className="mb-4">
+      <CardContent className="flex flex-col gap-3">
+      <div className="flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
         <div className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/40 p-1">
           <button
             onClick={() => setView("scorecard")}
@@ -326,7 +333,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto">
+      <div className="flex flex-nowrap items-center gap-3 overflow-x-auto">
         <FilterSelect
           label="Exported"
           width="w-32"
@@ -369,8 +376,11 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
           </Button>
         )}
       </div>
+      </CardContent>
+      </Card>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <Card>
+      <CardContent className="overflow-x-auto p-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -421,7 +431,8 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
             )}
           </TableBody>
         </Table>
-      </div>
+      </CardContent>
+      </Card>
 
       {sorted.length > 0 && (
         <div className="mt-3 flex items-center justify-between">

@@ -31,24 +31,27 @@ import type { IcpProfileRow } from "@/lib/data/icp-profiles";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type RowIssue = "missing_domain" | "malformed_domain" | null;
+type RowIssue = "missing_name" | "missing_domain" | "malformed_domain";
 
 interface Row {
   id: string;
   name: string;
   domain: string;
-  issue: RowIssue;
+  issues: RowIssue[];
 }
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 
-function validateDomain(domain: string): RowIssue {
-  if (!domain.trim()) return "missing_domain";
-  if (!DOMAIN_RE.test(domain.trim())) return "malformed_domain";
-  return null;
+function getRowIssues(name: string, domain: string): RowIssue[] {
+  const issues: RowIssue[] = [];
+  if (!name.trim()) issues.push("missing_name");
+  if (!domain.trim()) issues.push("missing_domain");
+  else if (!DOMAIN_RE.test(domain.trim())) issues.push("malformed_domain");
+  return issues;
 }
 
-const ISSUE_LABEL: Record<NonNullable<RowIssue>, string> = {
+const ISSUE_LABEL: Record<RowIssue, string> = {
+  missing_name: "Missing name",
   missing_domain: "Missing domain",
   malformed_domain: "Malformed domain",
 };
@@ -75,6 +78,7 @@ export function ImportWorkspace({
   const [rows, setRows] = React.useState<Row[]>([]);
   const [manualName, setManualName] = React.useState("");
   const [manualDomain, setManualDomain] = React.useState("");
+  const [manualError, setManualError] = React.useState<string | null>(null);
   const [selectedIcpId, setSelectedIcpId] = React.useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -83,10 +87,11 @@ export function ImportWorkspace({
 
   function addRow(name: string, domain: string) {
     if (!name.trim() && !domain.trim()) return;
+    const trimmedName = name.trim();
     const trimmedDomain = domain.trim();
     setRows((prev) => [
       ...prev,
-      { id: nextRowId(), name: name.trim(), domain: trimmedDomain, issue: validateDomain(trimmedDomain) },
+      { id: nextRowId(), name: trimmedName, domain: trimmedDomain, issues: getRowIssues(trimmedName, trimmedDomain) },
     ]);
   }
 
@@ -102,7 +107,7 @@ export function ImportWorkspace({
         if (idx === 0 && /company|domain|name/i.test(line)) return; // header row
         const [name = "", domain = ""] = cells;
         if (!name && !domain) return;
-        if (validateDomain(domain)) flagged += 1;
+        if (getRowIssues(name, domain).length > 0) flagged += 1;
         addRow(name, domain);
         added += 1;
       });
@@ -126,6 +131,11 @@ export function ImportWorkspace({
 
   function handleManualAdd(e: React.FormEvent) {
     e.preventDefault();
+    if (!manualName.trim() || !manualDomain.trim()) {
+      setManualError("Enter both a company name and a domain before adding.");
+      return;
+    }
+    setManualError(null);
     addRow(manualName, manualDomain);
     setManualName("");
     setManualDomain("");
@@ -136,16 +146,21 @@ export function ImportWorkspace({
   }
 
   function updateRowDomain(id: string, domain: string) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, domain, issue: validateDomain(domain) } : r)));
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, domain, issues: getRowIssues(r.name, domain) } : r)));
   }
 
-  const validRows = rows.filter((r) => r.issue === null);
-  const issueRows = rows.filter((r) => r.issue !== null);
+  function updateRowName(id: string, name: string) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name, issues: getRowIssues(name, r.domain) } : r)));
+  }
+
+  const validRows = rows.filter((r) => r.issues.length === 0);
+  const issueRows = rows.filter((r) => r.issues.length > 0);
   const selectedIcp = profiles.find((p) => p.id === selectedIcpId) ?? null;
 
   const queuedCount = queue.filter((c) => c.status === "queued").length;
   const enrichingCount = queue.filter((c) => c.status === "enriching").length;
   const failedInQueueCount = queue.filter((c) => c.status === "failed").length;
+  const activeQueueCount = queuedCount + enrichingCount;
 
   async function runBatch() {
     if (!selectedIcp) return;
@@ -170,7 +185,7 @@ export function ImportWorkspace({
         toast.error("Batch failed", { description: body.error ?? "Check the details below." });
       } else {
         setResult({ kind: "success", raw: body.result });
-        toast.success("Batch sent to n8n");
+        toast.success("Enrichment started");
         setRows([]);
       }
     } catch (err) {
@@ -190,7 +205,7 @@ export function ImportWorkspace({
             <CardTitle className="flex items-center gap-2">
               <UploadCloud className="size-4 text-muted-foreground" /> Upload a CSV
             </CardTitle>
-            <CardDescription>Bulk add. Columns: company name, domain (domain required).</CardDescription>
+            <CardDescription>Bulk add. Columns: company name, domain (both required).</CardDescription>
           </CardHeader>
           <CardContent>
             <div
@@ -240,12 +255,17 @@ export function ImportWorkspace({
           <CardContent>
             <form onSubmit={handleManualAdd} className="flex h-full flex-col justify-center gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="manual-name">Company name</Label>
+                <Label htmlFor="manual-name">
+                  Company name <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="manual-name"
                   placeholder="e.g. Apex Cooling Systems"
                   value={manualName}
-                  onChange={(e) => setManualName(e.target.value)}
+                  onChange={(e) => {
+                    setManualName(e.target.value);
+                    if (manualError) setManualError(null);
+                  }}
                 />
               </div>
               <div className="space-y-1.5">
@@ -256,12 +276,16 @@ export function ImportWorkspace({
                   id="manual-domain"
                   placeholder="e.g. apexcoolingsystems.com"
                   value={manualDomain}
-                  onChange={(e) => setManualDomain(e.target.value)}
+                  onChange={(e) => {
+                    setManualDomain(e.target.value);
+                    if (manualError) setManualError(null);
+                  }}
                 />
               </div>
               <Button type="submit">
                 <Plus /> Add to batch
               </Button>
+              {manualError && <p className="text-center text-xs text-destructive">{manualError}</p>}
             </form>
           </CardContent>
         </Card>
@@ -343,14 +367,16 @@ export function ImportWorkspace({
               <div className="flex flex-col gap-4">
                 {issueRows.length > 0 && (
                   <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-                    <p className="mb-2 text-sm font-medium text-destructive">Fix the domain or remove these before running</p>
+                    <p className="mb-2 text-sm font-medium text-destructive">Fix the name/domain or remove these before running</p>
                     <div className="flex flex-col gap-2">
                       {issueRows.map((row) => (
                         <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2">
-                          <div className="min-w-32">
-                            <p className={cn("text-sm", !row.name && "text-muted-foreground italic")}>{row.name || "—"}</p>
-                            <p className="text-xs text-destructive">{ISSUE_LABEL[row.issue as NonNullable<RowIssue>]}</p>
-                          </div>
+                          <Input
+                            value={row.name}
+                            onChange={(e) => updateRowName(row.id, e.target.value)}
+                            placeholder="Company name"
+                            className="h-8 min-w-32 flex-1"
+                          />
                           <Input
                             value={row.domain}
                             onChange={(e) => updateRowDomain(row.id, e.target.value)}
@@ -360,6 +386,9 @@ export function ImportWorkspace({
                           <Button variant="outline" size="sm" onClick={() => removeRow(row.id)}>
                             Remove
                           </Button>
+                          <p className="w-full text-xs text-destructive">
+                            {row.issues.map((i) => ISSUE_LABEL[i]).join(" · ")}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -415,8 +444,8 @@ export function ImportWorkspace({
             </CardDescription>
           </div>
           <Badge variant="outline" className="shrink-0 gap-1.5 border-transparent bg-muted text-muted-foreground">
-            <span className={cn("size-1.5 rounded-full", queue.length > 0 ? "bg-primary" : "bg-muted-foreground/40")} />
-            {queue.length > 0 ? `${queue.length} in queue` : "Idle — nothing running"}
+            <span className={cn("size-1.5 rounded-full", activeQueueCount > 0 ? "bg-primary" : "bg-muted-foreground/40")} />
+            {activeQueueCount > 0 ? `${activeQueueCount} in queue` : "Idle — nothing running"}
           </Badge>
         </CardHeader>
         <CardContent>
@@ -444,11 +473,11 @@ export function ImportWorkspace({
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Send this batch to n8n?</DialogTitle>
+            <DialogTitle>Start enrichment for this batch?</DialogTitle>
             <DialogDescription>
-              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be scored against{" "}
-              <strong>{selectedIcp?.icp_name ?? "the selected ICP"}</strong> and sent as JSON to run the enrichment
-              pipeline.
+              This will kick off enrichment for {validRows.length} compan{validRows.length === 1 ? "y" : "ies"},
+              scored against <strong>{selectedIcp?.icp_name ?? "the selected ICP"}</strong>. It can take a few
+              minutes — you can track progress in the queue below.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -456,7 +485,7 @@ export function ImportWorkspace({
               Cancel
             </Button>
             <Button onClick={runBatch} disabled={!selectedIcp}>
-              Upload & run
+              Start enrichment
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -478,18 +507,23 @@ export function ImportWorkspace({
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {result.kind === "error" && (
+            {result.kind === "success" ? (
+              <p className="text-sm text-muted-foreground">
+                Enrichment has started. You can follow progress in the queue below — this can take a few minutes
+                per company.
+              </p>
+            ) : (
               <Alert variant="destructive">
                 <AlertCircle />
                 <AlertTitle>{result.message}</AlertTitle>
               </Alert>
             )}
-            <div>
-              <p className="mb-1.5 text-xs text-muted-foreground">Raw response from n8n</p>
-              <pre className="overflow-x-auto rounded-lg border bg-muted/40 p-3 text-xs">
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none">Technical details</summary>
+              <pre className="mt-1.5 overflow-x-auto rounded-lg border bg-muted/40 p-3">
                 {JSON.stringify(result.kind === "success" ? result.raw : result.details, null, 2)}
               </pre>
-            </div>
+            </details>
           </CardContent>
         </Card>
       )}
