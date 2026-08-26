@@ -15,6 +15,7 @@ import {
   usePageTransition,
   PageLoadingOverlay,
 } from "@/components/layout/page-transition-context";
+import { UnsavedChangesProvider } from "@/components/layout/unsaved-changes-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,11 +47,13 @@ export function AppShell({
   user: SessionUser;
 }) {
   return (
-    <PageTransitionProvider>
-      <AppShellInner triageCount={triageCount} user={user}>
-        {children}
-      </AppShellInner>
-    </PageTransitionProvider>
+    <UnsavedChangesProvider>
+      <PageTransitionProvider>
+        <AppShellInner triageCount={triageCount} user={user}>
+          {children}
+        </AppShellInner>
+      </PageTransitionProvider>
+    </UnsavedChangesProvider>
   );
 }
 

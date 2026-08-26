@@ -20,6 +20,7 @@ import {
   saveModelSettings,
   type ModelSettingsInput,
 } from "@/app/(dashboard)/admin/config/actions";
+import { useUnsavedChangesGuard } from "@/components/layout/unsaved-changes-context";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -198,6 +199,159 @@ function BandEditor({
   );
 }
 
+interface FitRule {
+  field: string;
+  operator: "lt" | "gt";
+  value: number;
+  flag: string;
+}
+
+function parseFitRules(json: string): FitRule[] | null {
+  try {
+    const val = JSON.parse(json);
+    if (!Array.isArray(val)) return null;
+    if (
+      !val.every(
+        (r) =>
+          r &&
+          typeof r === "object" &&
+          typeof r.field === "string" &&
+          (r.operator === "lt" || r.operator === "gt") &&
+          typeof r.value === "number" &&
+          typeof r.flag === "string",
+      )
+    ) {
+      return null;
+    }
+    return val as FitRule[];
+  } catch {
+    return null;
+  }
+}
+
+function formatRuleExpr(rule: FitRule): string {
+  return `${rule.field} ${rule.operator === "lt" ? "<" : ">"} ${rule.value}`;
+}
+
+const RULE_EXPR_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(<|>)\s*(-?\d+(?:\.\d+)?)\s*$/;
+
+function parseRuleExpr(expr: string): { field: string; operator: "lt" | "gt"; value: number } | null {
+  const m = expr.match(RULE_EXPR_RE);
+  if (!m) return null;
+  return { field: m[1], operator: m[2] === "<" ? "lt" : "gt", value: Number(m[3]) };
+}
+
+// Fit rules define a profile: a hard requirement that fails flags the
+// company as a weak / wrong-ICP match and holds its score low. Each row is
+// a plain-text condition ("field < value") plus a toggle for whether
+// failing it is a hard requirement (flag: no_match) or a soft signal
+// (flag: weak) -- mirrors the client's own Model config mockup.
+function FitRuleEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const rules = parseFitRules(value);
+  const [drafts, setDrafts] = React.useState<Record<number, string>>({});
+
+  function commit(next: FitRule[]) {
+    onChange(JSON.stringify(next));
+  }
+
+  function updateExpr(index: number, text: string) {
+    setDrafts((prev) => ({ ...prev, [index]: text }));
+    const parsed = parseRuleExpr(text);
+    if (parsed && rules) {
+      commit(rules.map((r, i) => (i === index ? { ...r, ...parsed } : r)));
+    }
+  }
+
+  function clearDraft(index: number) {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+  }
+
+  function updateHard(index: number, hard: boolean) {
+    if (!rules) return;
+    commit(rules.map((r, i) => (i === index ? { ...r, flag: hard ? "no_match" : "weak" } : r)));
+  }
+
+  function removeRule(index: number) {
+    if (!rules) return;
+    commit(rules.filter((_, i) => i !== index));
+    clearDraft(index);
+  }
+
+  function addRule() {
+    commit([...(rules ?? []), { field: "headcount", operator: "gt", value: 0, flag: "weak" }]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {rules === null ? (
+        <div className="space-y-1.5">
+          <textarea
+            className="min-h-24 w-full rounded-md border bg-transparent p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+          />
+          <p className="text-xs text-destructive">Not a valid rule list — editing as raw JSON.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border">
+          {rules.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">No fit rules yet.</p>}
+          {rules.map((rule, i) => {
+            const text = drafts[i] ?? formatRuleExpr(rule);
+            const invalid = !parseRuleExpr(text);
+            const hard = rule.flag === "no_match";
+            return (
+              <div key={i} className={cn("flex items-center gap-3 px-3 py-2.5", i > 0 && "border-t")}>
+                <Input
+                  value={text}
+                  disabled={disabled}
+                  onChange={(e) => updateExpr(i, e.target.value)}
+                  onBlur={() => clearDraft(i)}
+                  placeholder="field < value"
+                  className={cn("h-8 flex-1 font-mono text-xs", invalid && "border-destructive")}
+                />
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "shrink-0 gap-1 border-transparent text-[10px] whitespace-nowrap",
+                    hard ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {hard ? "Hard requirement" : "Soft signal"}
+                </Badge>
+                <Switch checked={hard} disabled={disabled} onCheckedChange={(v) => updateHard(i, v)} />
+                <Button variant="ghost" size="icon" className="size-8 shrink-0" disabled={disabled} onClick={() => removeRule(i)}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-1.5 border-t px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+            disabled={disabled}
+            onClick={addRule}
+          >
+            <Plus className="size-3.5" /> Add rule
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
   return {
     tier_a_min: row.tier_a_min,
@@ -246,11 +400,6 @@ export function ConfigWorkspace({
     setDrafts(profiles.map(rowToDraft));
   }
 
-  const distinctSectors = React.useMemo(
-    () => Array.from(new Set(taxonomy.map((t) => t.sector))),
-    [taxonomy],
-  );
-
   function updateDraft(clientKey: string, patch: Partial<Draft>) {
     setDrafts((prev) => prev.map((d) => (d.clientKey === clientKey ? { ...d, ...patch } : d)));
   }
@@ -265,16 +414,6 @@ export function ConfigWorkspace({
     setActiveTab(draft.clientKey);
   }
 
-  function toggleSector(clientKey: string, sector: string, checked: boolean) {
-    setDrafts((prev) =>
-      prev.map((d) => {
-        if (d.clientKey !== clientKey) return d;
-        const next = checked ? Array.from(new Set([...d.target_sectors, sector])) : d.target_sectors.filter((s2) => s2 !== sector);
-        return { ...d, target_sectors: next };
-      }),
-    );
-  }
-
   function jsonIsValid(value: string) {
     try {
       JSON.parse(value);
@@ -284,11 +423,33 @@ export function ConfigWorkspace({
     }
   }
 
-  async function save(draft: Draft) {
+  function draftEquals(a: Draft, b: Draft) {
+    return (
+      a.icp_name === b.icp_name &&
+      a.weight_icp_fit === b.weight_icp_fit &&
+      a.weight_scale_footprint === b.weight_scale_footprint &&
+      a.weight_hiring_growth === b.weight_hiring_growth &&
+      a.weight_financial_viability === b.weight_financial_viability &&
+      JSON.stringify(a.target_sectors) === JSON.stringify(b.target_sectors) &&
+      a.revenue_bands_usd === b.revenue_bands_usd &&
+      a.headcount_bands === b.headcount_bands &&
+      a.fit_rules === b.fit_rules
+    );
+  }
+
+  const dirtyDrafts = drafts.filter((d) => {
+    if (!d.id) return true; // new, never saved
+    const original = syncedProfiles.find((p) => p.id === d.id);
+    return !original || !draftEquals(d, rowToDraft(original));
+  });
+
+  // Returns whether the save actually succeeded, so the nav-away guard below
+  // knows whether it's safe to navigate or whether to stay put on failure.
+  async function save(draft: Draft): Promise<boolean> {
     const sum = sumFor(draft);
     if (sum !== 100) {
       toast.error("Weights must sum to 100", { description: `${draft.icp_name} currently sums to ${sum}.` });
-      return;
+      return false;
     }
     for (const [label, value] of [
       ["Revenue bands", draft.revenue_bands_usd],
@@ -297,7 +458,7 @@ export function ConfigWorkspace({
     ] as const) {
       if (!jsonIsValid(value)) {
         toast.error(`${label} is not valid JSON`);
-        return;
+        return false;
       }
     }
 
@@ -318,8 +479,10 @@ export function ConfigWorkspace({
       toast.success(`${draft.icp_name} saved`, { description: "Applies on next score or re-score." });
       if (!draft.id) setActiveTab(id);
       router.refresh();
+      return true;
     } catch (err) {
       toast.error("Failed to save ICP profile", { description: err instanceof Error ? err.message : undefined });
+      return false;
     } finally {
       setPendingKey(null);
     }
@@ -353,26 +516,43 @@ export function ConfigWorkspace({
   const healthWeightSum =
     settingsDraft.health_weight_qualitative + settingsDraft.health_weight_talent + settingsDraft.health_weight_adverse;
 
-  async function saveSettings() {
+  const settingsDirty = JSON.stringify(settingsDraft) !== JSON.stringify(toSettingsInput(syncedSettings));
+
+  async function saveSettings(): Promise<boolean> {
     if (settingsDraft.tier_a_min <= settingsDraft.tier_b_min) {
       toast.error("Tier A threshold must be higher than Tier B.");
-      return;
+      return false;
     }
     if (healthWeightSum !== 100) {
       toast.error("Account health weights must sum to 100", { description: `Currently ${healthWeightSum}.` });
-      return;
+      return false;
     }
     setSavingSettings(true);
     try {
       await saveModelSettings(settingsDraft);
       toast.success("Settings saved", { description: "Applies on the next score or re-score." });
       router.refresh();
+      return true;
     } catch (err) {
       toast.error("Failed to save settings", { description: err instanceof Error ? err.message : undefined });
+      return false;
     } finally {
       setSavingSettings(false);
     }
   }
+
+  async function saveAllAndClearGuard(): Promise<boolean> {
+    let ok = true;
+    for (const d of dirtyDrafts) {
+      if (!(await save(d))) ok = false;
+    }
+    if (settingsDirty) {
+      if (!(await saveSettings())) ok = false;
+    }
+    return ok;
+  }
+
+  useUnsavedChangesGuard(dirtyDrafts.length > 0 || settingsDirty, saveAllAndClearGuard);
 
   async function toggleActive(row: SectorTaxonomyRow, active: boolean) {
     setPendingSectorId(row.id);
@@ -421,7 +601,7 @@ export function ConfigWorkspace({
           </Card>
         ) : (
           <>
-            <div className="mb-4 flex flex-nowrap items-center gap-2.5 overflow-x-auto pb-1">
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {drafts.map((d) => {
                 const active = activeTab === d.clientKey;
                 return (
@@ -430,8 +610,8 @@ export function ConfigWorkspace({
                     type="button"
                     onClick={() => setActiveTab(d.clientKey)}
                     className={cn(
-                      "flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
-                      active ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
+                      "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-left transition-colors",
+                      active ? "border-primary ring-1 ring-primary bg-primary/5" : "hover:bg-muted/50",
                     )}
                   >
                     <span
@@ -442,16 +622,20 @@ export function ConfigWorkspace({
                     >
                       {(d.icp_name || "?").charAt(0)}
                     </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">{d.icp_name || "Untitled"}</span>
-                      {!d.id && <span className="text-[11px] text-muted-foreground">new — unsaved</span>}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{d.icp_name || "Untitled"}</p>
+                      {!d.id && <p className="text-[11px] text-muted-foreground">new — unsaved</p>}
+                    </div>
                   </button>
                 );
               })}
-              <Button variant="outline" size="sm" className="shrink-0" onClick={addProfile}>
-                <Plus /> New ICP profile
-              </Button>
+              <button
+                type="button"
+                onClick={addProfile}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed px-3.5 py-3 text-sm text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <Plus className="size-3.5" /> New ICP profile
+              </button>
             </div>
 
             {activeDraft &&
@@ -511,34 +695,6 @@ export function ConfigWorkspace({
                       </CardContent>
                     </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Target sectors</CardTitle>
-                        <CardDescription>Which sectors this ICP profile matches against.</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap gap-2">
-                          {distinctSectors.map((sector) => {
-                            const checked = d.target_sectors.includes(sector);
-                            return (
-                              <button
-                                key={sector}
-                                type="button"
-                                onClick={() => toggleSector(d.clientKey, sector, !checked)}
-                                disabled={isPending}
-                                className={cn(
-                                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                                  checked ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent",
-                                )}
-                              >
-                                {sector}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
-
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                       <Card>
                         <CardHeader>
@@ -576,17 +732,16 @@ export function ConfigWorkspace({
                       <CardHeader>
                         <CardTitle>Fit rules</CardTitle>
                         <CardDescription>
-                          Raw JSON, parsed by the n8n Scoring Engine — the shape isn&apos;t fixed on this side, so it&apos;s edited directly.
+                          A hard requirement that fails flags the company as a weak / wrong-ICP match and holds its
+                          score low.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <textarea
-                          className="min-h-32 w-full rounded-md border bg-transparent p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        <FitRuleEditor
                           value={d.fit_rules}
-                          onChange={(e) => updateDraft(d.clientKey, { fit_rules: e.target.value })}
+                          onChange={(v) => updateDraft(d.clientKey, { fit_rules: v })}
                           disabled={isPending}
                         />
-                        {!jsonIsValid(d.fit_rules) && <p className="mt-1.5 text-xs text-destructive">Not valid JSON</p>}
                       </CardContent>
                     </Card>
 
@@ -705,23 +860,6 @@ export function ConfigWorkspace({
           </Card>
 
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <div>
-                <CardTitle>Contact pull rule</CardTitle>
-                <CardDescription>On demand keeps contact-credit spend to accounts the team actually opens.</CardDescription>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Switch
-                  checked={settingsDraft.contact_pull_on_demand}
-                  disabled={savingSettings}
-                  onCheckedChange={(v) => updateSettings({ contact_pull_on_demand: v })}
-                />
-                <span className="text-sm text-muted-foreground">{settingsDraft.contact_pull_on_demand ? "On demand" : "Automatic"}</span>
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Card>
             <CardHeader>
               <CardTitle>Enrichment run settings</CardTitle>
               <CardDescription>Used to estimate cost before an enrichment run, and to avoid re-pulling fresh records.</CardDescription>
@@ -757,110 +895,6 @@ export function ConfigWorkspace({
                   />
                   <span className="text-sm text-muted-foreground">days</span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Currency &amp; exchange rates</CardTitle>
-              <CardDescription>All revenue is shown in US dollars. Source figures in other currencies are converted at these rates.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm">£1 =</span>
-                <span className="text-sm text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  className="h-8 w-24"
-                  value={settingsDraft.gbp_to_usd_rate}
-                  disabled={savingSettings}
-                  onChange={(e) => updateSettings({ gbp_to_usd_rate: Number(e.target.value) })}
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm">€1 =</span>
-                <span className="text-sm text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  className="h-8 w-24"
-                  value={settingsDraft.eur_to_usd_rate}
-                  disabled={savingSettings}
-                  onChange={(e) => updateSettings({ eur_to_usd_rate: Number(e.target.value) })}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">US-domiciled companies are already in USD.</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex-row items-start justify-between">
-              <div>
-                <CardTitle>Account health score</CardTitle>
-                <CardDescription>
-                  How live-client health is weighted. Applied to the Accounts view. Adverse events subtract from the
-                  blended qualitative + talent score.
-                </CardDescription>
-              </div>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "gap-1 border-transparent shrink-0",
-                  healthWeightSum === 100 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
-                )}
-              >
-                {healthWeightSum === 100 ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
-                Total {healthWeightSum}%
-              </Badge>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {(
-                [
-                  { key: "health_weight_qualitative" as const, label: "Qualitative ratings", color: "var(--primary)" },
-                  { key: "health_weight_talent" as const, label: "Talent & retention", color: "#10b981" },
-                  { key: "health_weight_adverse" as const, label: "Adverse-events penalty", color: "#ef4444" },
-                ]
-              ).map(({ key, label, color }) => (
-                <div key={key} className="flex items-center gap-3">
-                  <span className="h-2.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
-                  <Label className="w-44 shrink-0 text-sm font-normal">{label}</Label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={settingsDraft[key]}
-                    disabled={savingSettings}
-                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<ModelSettingsInput>)}
-                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-current"
-                    style={{ color }}
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={settingsDraft[key]}
-                    disabled={savingSettings}
-                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<ModelSettingsInput>)}
-                    className="h-8 w-16 shrink-0 tabular-nums"
-                  />
-                  <span className="w-3 shrink-0 text-xs text-muted-foreground">%</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-1.5 border-t pt-4">
-                <Label className="text-sm font-normal text-muted-foreground">Review reminder after</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="h-8 w-20"
-                  value={settingsDraft.review_reminder_days}
-                  disabled={savingSettings}
-                  onChange={(e) => updateSettings({ review_reminder_days: Number(e.target.value) })}
-                />
-                <span className="text-sm text-muted-foreground">days without a client-scorecard review</span>
               </div>
             </CardContent>
           </Card>
