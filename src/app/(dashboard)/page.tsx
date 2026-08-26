@@ -16,7 +16,7 @@ import { getRecentUsageRuns } from "@/lib/data/usage";
 import { formatDateHeading, formatDateTime } from "@/lib/format";
 import { getSessionUser } from "@/lib/supabase/auth-server";
 import { cn } from "@/lib/utils";
-import type { CompanyStatus } from "@/lib/types";
+import type { CompanyStatus, TriageReason } from "@/lib/types";
 
 // Everything here changes as n8n runs and as the team works — never freeze it.
 export const dynamic = "force-dynamic";
@@ -66,6 +66,19 @@ function openCta(status: CompanyStatus) {
   return status === "triage" ? "Review in triage" : "Open account";
 }
 
+function failureDetail(name: string, triageReason: TriageReason, lastError: string | null): string {
+  switch (triageReason) {
+    case "insufficient_data":
+      return `${name} — not enough public data to enrich.`;
+    case "no_icp_profile":
+      return `${name} — classified into a sector with no matching ICP profile configured.`;
+    case "processing_error":
+      return `${name} — ${lastError ?? "enrichment failed with an unknown error."}`;
+    default:
+      return `${name} — enrichment could not complete.`;
+  }
+}
+
 export default async function HomePage() {
   const [user, triageCount, failed, noMatch, lowConfidence, emailQuality, sectorPerf, recentRuns] = await Promise.all([
     getSessionUser(),
@@ -87,7 +100,7 @@ export default async function HomePage() {
     ...failed.items.map((c) => ({
       type: "failed" as const,
       title: "Enrichment failed",
-      detail: `${c.name} — enrichment could not complete.`,
+      detail: failureDetail(c.name, c.triageReason, c.lastError),
       cta: "Retry in queue",
       href: "/import",
     })),

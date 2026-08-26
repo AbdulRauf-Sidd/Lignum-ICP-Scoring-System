@@ -27,6 +27,8 @@ interface CompanyRow {
   updated_at: string;
   last_enriched_at: string | null;
   candidate_entities: CandidateEntity[] | null;
+  creditsafe_match_strategy: string | null;
+  last_error: string | null;
 }
 
 // Mirrors the real `scoring_breakdown` table.
@@ -113,6 +115,8 @@ function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | nu
     importedAt: row.created_at,
     lastEnrichedAt: row.last_enriched_at,
     candidateEntities: row.candidate_entities ?? [],
+    creditsafeMatchStrategy: row.creditsafe_match_strategy,
+    lastError: row.last_error,
     // Per-field source attribution (enrichment_data.raw_response) isn't
     // parsed into individual fields yet — deferred.
     sourcedFields: [],
@@ -186,17 +190,35 @@ export interface FlaggedCompaniesResult {
   count: number;
 }
 
-export async function getFailedCompanies(limit = 5): Promise<FlaggedCompaniesResult> {
+export interface FailedCompany extends FlaggedCompany {
+  triageReason: TriageReason;
+  lastError: string | null;
+}
+
+export interface FailedCompaniesResult {
+  items: FailedCompany[];
+  count: number;
+}
+
+export async function getFailedCompanies(limit = 5): Promise<FailedCompaniesResult> {
   const supabase = getSupabaseServerClient();
   const { data, error, count } = await supabase
     .from("companies")
-    .select("id, name, domain, status", { count: "exact" })
+    .select("id, name, domain, status, triage_reason, last_error", { count: "exact" })
     .eq("status", "failed")
     .order("updated_at", { ascending: false })
     .limit(limit);
 
   if (error) throw new Error(`Failed to load failed companies: ${error.message}`);
-  return { items: (data ?? []) as FlaggedCompany[], count: count ?? 0 };
+  const items = (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    domain: r.domain as string,
+    status: r.status as CompanyStatus,
+    triageReason: r.triage_reason as TriageReason,
+    lastError: r.last_error as string | null,
+  }));
+  return { items, count: count ?? 0 };
 }
 
 export async function getNoMatchCompanies(limit = 5): Promise<FlaggedCompaniesResult> {

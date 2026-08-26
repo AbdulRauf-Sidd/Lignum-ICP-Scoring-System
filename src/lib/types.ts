@@ -7,7 +7,11 @@ export type CompanyStatus =
 
 export type TriageReason =
   | "entity_ambiguous"
+  | "creditsafe_fallback_match"
   | "low_confidence_sector"
+  | "insufficient_data"
+  | "no_icp_profile"
+  | "processing_error"
   | null;
 
 export type LifecycleStatus = "prospect" | "exported" | "client";
@@ -16,7 +20,7 @@ export type Tier = "A" | "B" | "C" | null;
 
 export type MatchFlag = "match" | "weak" | "no_match";
 
-export type FieldSource = "creditsafe" | "cognism" | "firecrawl" | "exa" | "llm";
+export type FieldSource = "creditsafe" | "cognism";
 
 export interface ScoreCategory {
   key: "icp_fit" | "scale_footprint" | "hiring_growth" | "financial_viability";
@@ -33,7 +37,7 @@ export interface CandidateEntity {
   domain: string;
   location: string;
   matchScore: number;
-  source: "creditsafe" | "cognism";
+  source: "creditsafe" | "creditsafe_website_only" | "creditsafe_name_only" | "cognism";
 }
 
 export interface SourcedField {
@@ -64,6 +68,8 @@ export interface Company {
   importedAt: string;
   lastEnrichedAt: string | null;
   candidateEntities: CandidateEntity[];
+  creditsafeMatchStrategy: string | null;
+  lastError: string | null;
   sourcedFields: SourcedField[];
   exported: boolean;
   classificationConfidence: number | null;
@@ -94,9 +100,7 @@ export type UsageAction =
   | "account_redeem"
   | "contact_redeem"
   | "creditsafe_report"
-  | "firecrawl"
-  | "exa"
-  | "llm";
+  | "repull_skip";
 
 export interface UsageItem {
   id: string;

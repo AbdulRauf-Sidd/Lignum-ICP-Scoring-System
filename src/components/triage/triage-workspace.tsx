@@ -56,12 +56,38 @@ function CompanyAvatar({ id, name }: { id: string; name: string }) {
   );
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  creditsafe: "Creditsafe",
+  creditsafe_website_only: "Creditsafe — website match",
+  creditsafe_name_only: "Creditsafe — name match",
+  cognism: "Cognism",
+};
+
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source;
+}
+
+const MATCH_STRATEGY_LABELS: Record<string, string> = {
+  website_only: "No exact name + website match — closest candidate found by website alone.",
+  name_only: "No exact name + website match — closest candidate found by name alone.",
+};
+
+// Needs the same human confirmation flow as entity_ambiguous — either several
+// candidates to pick between, or a single fallback-found candidate that still
+// wasn't corroborated by both signals together.
+function needsEntityConfirmation(company: Company): boolean {
+  return company.triageReason === "entity_ambiguous" || company.triageReason === "creditsafe_fallback_match";
+}
+
 // All the chips shown on a card — includes the routine "why it's here" reason,
 // which alone shouldn't block a bulk approve (see isFlagged below).
 function getWarnings(company: Company): string[] {
   const warnings: string[] = [];
   if (company.triageReason === "entity_ambiguous") {
     warnings.push(`${company.candidateEntities.length} candidate match${company.candidateEntities.length === 1 ? "" : "es"}`);
+  }
+  if (company.triageReason === "creditsafe_fallback_match") {
+    warnings.push("Fallback match — needs confirmation");
   }
   if (company.triageReason === "low_confidence_sector") {
     warnings.push("Low classification confidence");
@@ -71,10 +97,11 @@ function getWarnings(company: Company): string[] {
   return warnings;
 }
 
-// A genuine concern beyond the routine triage reason — entity ambiguity always
-// needs a human pick, and a weak/no match is worth a second look before approving.
+// A genuine concern beyond the routine triage reason — entity ambiguity (and a
+// fallback-only match) always needs a human pick, and a weak/no match is worth
+// a second look before approving.
 function isFlagged(company: Company): boolean {
-  return company.triageReason === "entity_ambiguous" || company.matchFlag === "weak" || company.matchFlag === "no_match";
+  return needsEntityConfirmation(company) || company.matchFlag === "weak" || company.matchFlag === "no_match";
 }
 
 export function TriageWorkspace({ companies }: { companies: Company[] }) {
@@ -107,6 +134,7 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
   const counts = {
     all: items.length,
     entity_ambiguous: items.filter((c) => c.triageReason === "entity_ambiguous").length,
+    creditsafe_fallback_match: items.filter((c) => c.triageReason === "creditsafe_fallback_match").length,
     low_confidence_sector: items.filter((c) => c.triageReason === "low_confidence_sector").length,
   };
 
@@ -202,11 +230,12 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(
           [
             { key: "all" as const, label: "Total in triage", count: counts.all },
             { key: "entity_ambiguous" as const, label: "Entity ambiguous", count: counts.entity_ambiguous },
+            { key: "creditsafe_fallback_match" as const, label: "Fallback match", count: counts.creditsafe_fallback_match },
             { key: "low_confidence_sector" as const, label: "Low-confidence sector", count: counts.low_confidence_sector },
           ]
         ).map((tile) => (
@@ -358,9 +387,14 @@ function TriageCard({
           </Badge>
         )}
 
-        {!resolved && editing && company.triageReason === "entity_ambiguous" && (
+        {!resolved && editing && needsEntityConfirmation(company) && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Which company is this?</p>
+            {company.triageReason === "creditsafe_fallback_match" && company.creditsafeMatchStrategy && (
+              <p className="text-xs text-muted-foreground">
+                {MATCH_STRATEGY_LABELS[company.creditsafeMatchStrategy] ?? "Matched via a fallback search — please confirm."}
+              </p>
+            )}
             {company.candidateEntities.map((cand) => (
               <button
                 key={cand.id}
@@ -380,7 +414,7 @@ function TriageCard({
                     <span className="flex items-center gap-1">
                       <MapPin className="size-3" /> {cand.location}
                     </span>
-                    <span className="capitalize">source: {cand.source}</span>
+                    <span>{sourceLabel(cand.source)}</span>
                   </div>
                 </div>
                 <Badge variant="outline" className="shrink-0">
@@ -433,7 +467,7 @@ function TriageCard({
         {!resolved && (
           <div className="flex items-center justify-between border-t pt-4">
             <div className="flex items-center gap-2">
-              {company.triageReason === "entity_ambiguous" ? (
+              {needsEntityConfirmation(company) ? (
                 <Button size="sm" onClick={onConfirmEntity} disabled={isPending}>
                   {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm & continue run
                 </Button>
