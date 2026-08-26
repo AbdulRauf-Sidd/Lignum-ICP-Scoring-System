@@ -75,6 +75,7 @@ export function ImportWorkspace({
   const [rows, setRows] = React.useState<Row[]>([]);
   const [manualName, setManualName] = React.useState("");
   const [manualDomain, setManualDomain] = React.useState("");
+  const [selectedIcpId, setSelectedIcpId] = React.useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [result, setResult] = React.useState<SubmitResult | null>(null);
@@ -140,17 +141,20 @@ export function ImportWorkspace({
 
   const validRows = rows.filter((r) => r.issue === null);
   const issueRows = rows.filter((r) => r.issue !== null);
+  const selectedIcp = profiles.find((p) => p.id === selectedIcpId) ?? null;
 
   const queuedCount = queue.filter((c) => c.status === "queued").length;
   const enrichingCount = queue.filter((c) => c.status === "enriching").length;
   const failedInQueueCount = queue.filter((c) => c.status === "failed").length;
 
   async function runBatch() {
+    if (!selectedIcp) return;
     setReviewOpen(false);
     setSubmitting(true);
     setResult(null);
 
     const payload = {
+      icp_name: selectedIcp.icp_name,
       rows: validRows.map((r) => ({ name: r.name, domain: r.domain })),
     };
 
@@ -265,10 +269,13 @@ export function ImportWorkspace({
 
       <Card>
         <CardHeader>
-          <CardTitle>ICP profiles</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            ICP profile <span className="text-destructive">*</span>
+          </CardTitle>
           <CardDescription>
-            Sector and sub-sector are assigned automatically during classification — every company is scored
-            against whichever of these it best fits.
+            Choose the ICP this batch will be scored against. Sector and sub-sector are still assigned
+            automatically during classification, but every company in this batch is scored against the one
+            profile picked here — a batch can&apos;t run without one.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -278,20 +285,38 @@ export function ImportWorkspace({
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {profiles.map((p) => (
-                <div key={p.id} className="flex items-start gap-2.5 rounded-lg border px-3.5 py-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted font-heading text-xs font-bold text-muted-foreground">
-                    {(p.icp_name || "?").charAt(0)}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{p.icp_name || "Untitled"}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      ICP {p.weight_icp_fit}% · Scale {p.weight_scale_footprint}% · Hiring {p.weight_hiring_growth}% ·
-                      Financial {p.weight_financial_viability}%
-                    </p>
-                  </div>
-                </div>
-              ))}
+              {profiles.map((p) => {
+                const selected = p.id === selectedIcpId;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setSelectedIcpId(p.id)}
+                    className={cn(
+                      "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-left transition-colors",
+                      selected ? "border-primary ring-1 ring-primary bg-primary/5" : "hover:bg-muted/50",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-md font-heading text-xs font-bold",
+                        selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {(p.icp_name || "?").charAt(0)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{p.icp_name || "Untitled"}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        ICP {p.weight_icp_fit}% · Scale {p.weight_scale_footprint}% · Hiring {p.weight_hiring_growth}% ·
+                        Financial {p.weight_financial_viability}%
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -362,7 +387,7 @@ export function ImportWorkspace({
               <div className="flex flex-col gap-2 lg:border-l lg:pl-6">
                 <Button
                   className="w-full"
-                  disabled={validRows.length === 0 || issueRows.length > 0 || submitting}
+                  disabled={validRows.length === 0 || issueRows.length > 0 || !selectedIcp || submitting}
                   onClick={() => setReviewOpen(true)}
                 >
                   {submitting && <Loader2 className="animate-spin" />}
@@ -371,7 +396,9 @@ export function ImportWorkspace({
                 <p className="text-center text-xs text-muted-foreground">
                   {issueRows.length > 0
                     ? "Fix the flagged rows to enable the run"
-                    : `${validRows.length} row${validRows.length === 1 ? "" : "s"} will be sent`}
+                    : !selectedIcp
+                      ? "Choose an ICP profile above to enable the run"
+                      : `${validRows.length} row${validRows.length === 1 ? "" : "s"} will be sent`}
                 </p>
               </div>
             </div>
@@ -419,15 +446,18 @@ export function ImportWorkspace({
           <DialogHeader>
             <DialogTitle>Send this batch to n8n?</DialogTitle>
             <DialogDescription>
-              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be sent as JSON to run the
-              enrichment pipeline.
+              {validRows.length} validated row{validRows.length === 1 ? "" : "s"} will be scored against{" "}
+              <strong>{selectedIcp?.icp_name ?? "the selected ICP"}</strong> and sent as JSON to run the enrichment
+              pipeline.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReviewOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={runBatch}>Upload & run</Button>
+            <Button onClick={runBatch} disabled={!selectedIcp}>
+              Upload & run
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
