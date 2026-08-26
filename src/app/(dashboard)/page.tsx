@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TriageReasonBadge } from "@/components/shared/badges";
 import {
   getTriageCount,
   getFailedCompanies,
@@ -29,6 +30,7 @@ interface AttentionItem {
   detail: string;
   cta: string;
   href: string;
+  triageReason?: TriageReason;
 }
 
 const ATTENTION_META: Record<AttentionType, { label: string; dot: string; chip: string; value: string }> = {
@@ -103,6 +105,7 @@ export default async function HomePage() {
       detail: failureDetail(c.name, c.triageReason, c.lastError),
       cta: "Retry in queue",
       href: "/import",
+      triageReason: c.triageReason,
     })),
     ...noMatch.items.map((c) => ({
       type: "no_match" as const,
@@ -231,9 +234,13 @@ export default async function HomePage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-medium">{item.title}</p>
-                          <Badge variant="outline" className={cn("border-transparent text-[10px]", meta.chip)}>
-                            {meta.label}
-                          </Badge>
+                          {item.triageReason ? (
+                            <TriageReasonBadge reason={item.triageReason} />
+                          ) : (
+                            <Badge variant="outline" className={cn("border-transparent text-[10px]", meta.chip)}>
+                              {meta.label}
+                            </Badge>
+                          )}
                         </div>
                         <p className="truncate text-xs text-muted-foreground">{item.detail}</p>
                       </div>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCompanyById } from "@/lib/data/companies";
 import { getContactsForCompanies } from "@/lib/data/contacts";
+import { CompanyContactsCard } from "@/components/target-list/company-contacts-card";
 
 // Always fetch fresh — this company's status/score can change between
 // n8n runs, and freezing it at build time would show stale data.
@@ -149,31 +150,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
         </div>
 
         <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Contacts ({contacts.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col divide-y">
-              {contacts.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  No contacts listed yet — nothing pulled from Cognism for this company.
-                </p>
-              ) : (
-                contacts.map((c) => (
-                  <div key={c.id} className="py-2.5">
-                    <p className="text-sm font-medium">{c.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {c.title}
-                      {c.seniority ? ` (${c.seniority})` : ""}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {c.email ?? "Redeem to reveal"}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <CompanyContactsCard company={company} contacts={contacts} />
         </div>
       </div>
     </div>
