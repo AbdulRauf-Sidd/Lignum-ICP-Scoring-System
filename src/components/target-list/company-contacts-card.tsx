@@ -37,7 +37,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
     setFinding(true);
     try {
       await findContacts(company.id, company.domain);
-      toast.success(`Searching contacts for ${company.name}`, { description: "This can take a moment — refresh to see results." });
+      toast.success(`Searching contacts for ${company.name}`, { description: "This can take a moment to complete." });
       router.refresh();
     } catch (err) {
       toast.error("Failed to find contacts", { description: err instanceof Error ? err.message : undefined });
@@ -56,7 +56,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
     try {
       await bulkRedeemContacts(items.map((c) => ({ contactId: c.id, redeemId: c.cognism_redeem_id as string, companyId: c.company_id })));
       toast.success(`Enriching ${items.length} contact${items.length === 1 ? "" : "s"}`, {
-        description: "Refresh in a moment to see revealed emails and phones.",
+        description: "Revealed emails and phones will appear automatically once it's done.",
       });
       router.refresh();
     } catch (err) {
