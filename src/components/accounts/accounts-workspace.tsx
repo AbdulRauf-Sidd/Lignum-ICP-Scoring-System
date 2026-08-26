@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Briefcase, Loader2, Star } from "lucide-react";
+import { AlertTriangle, BarChart3, Briefcase, Loader2, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -339,40 +339,46 @@ export function AccountsWorkspace({ data }: { data: AccountsData }) {
                   Manual entry
                 </Badge>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Active roles</Label>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-sm font-normal">Active roles</Label>
                     <Input
                       type="number"
+                      className="w-24 text-right"
                       value={talentDrafts[active.id].activeRoles}
                       onChange={(e) => updateTalent(active.id, { activeRoles: Number(e.target.value) })}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Placements YTD</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-sm font-normal">Placements YTD</Label>
                     <Input
                       type="number"
+                      className="w-24 text-right"
                       value={talentDrafts[active.id].placementsYtd}
                       onChange={(e) => updateTalent(active.id, { placementsYtd: Number(e.target.value) })}
                     />
                   </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Avg. time to fill (days)</Label>
-                    <Input
-                      type="number"
-                      value={talentDrafts[active.id].avgTimeToFillDays}
-                      onChange={(e) => updateTalent(active.id, { avgTimeToFillDays: Number(e.target.value) })}
-                    />
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-sm font-normal">Avg. time to fill</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        className="w-24 text-right"
+                        value={talentDrafts[active.id].avgTimeToFillDays}
+                        onChange={(e) => updateTalent(active.id, { avgTimeToFillDays: Number(e.target.value) })}
+                      />
+                      <span className="w-8 text-xs text-muted-foreground">days</span>
+                    </div>
                   </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Notes</Label>
-                    <Textarea
-                      value={talentDrafts[active.id].notes}
-                      onChange={(e) => updateTalent(active.id, { notes: e.target.value })}
-                      rows={3}
-                    />
-                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Notes</Label>
+                  <Textarea
+                    value={talentDrafts[active.id].notes}
+                    onChange={(e) => updateTalent(active.id, { notes: e.target.value })}
+                    rows={3}
+                  />
                 </div>
                 <Button size="sm" className="w-fit" onClick={() => handleSaveTalent(active.id)} disabled={savingTalent}>
                   {savingTalent && <Loader2 className="size-4 animate-spin" />}
@@ -383,9 +389,11 @@ export function AccountsWorkspace({ data }: { data: AccountsData }) {
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-start justify-between">
               <CardTitle>Adverse events</CardTitle>
-              <CardDescription>Creditsafe + Cognism.</CardDescription>
+              <Badge variant="outline" className="shrink-0 border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
+                Creditsafe + Cognism
+              </Badge>
             </CardHeader>
             <CardContent>
               {activeEvents.length === 0 ? (
@@ -414,10 +422,13 @@ export function AccountsWorkspace({ data }: { data: AccountsData }) {
             </CardContent>
           </Card>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-6 text-center">
-            <div className="mx-auto">
-              <p className="text-sm font-medium text-muted-foreground">Delivery efficiency · from CRM</p>
-              <p className="mt-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 rounded-lg border border-dashed px-4 py-4">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <BarChart3 className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Delivery efficiency · from CRM</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Placement volume, time-to-fill, fill rate and margin — sourced from Loxo. Not yet connected.
               </p>
             </div>

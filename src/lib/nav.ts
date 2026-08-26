@@ -9,6 +9,7 @@ import {
   BarChart3,
   Settings2,
   Building2,
+  UserCog,
 } from "lucide-react";
 
 export interface NavItem {
@@ -30,4 +31,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/analytics", label: "Analytics", icon: BarChart3, group: "Oversight" },
   { href: "/accounts", label: "Accounts", icon: Building2, group: "Accounts", adminOnly: true },
   { href: "/admin/config", label: "Model config", icon: Settings2, group: "Admin", adminOnly: true },
+  { href: "/admin/users", label: "Users", icon: UserCog, group: "Admin", adminOnly: true },
 ];
