@@ -137,6 +137,13 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                         <Badge variant="outline">cognism</Badge>
                       </TableCell>
                     </TableRow>
+                    <TableRow>
+                      <TableCell>Hiring activity (6mo)</TableCell>
+                      <TableCell>{formatNumber(company.hiringEventCount)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">cognism</Badge>
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>

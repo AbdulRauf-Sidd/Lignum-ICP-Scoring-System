@@ -31,6 +31,7 @@ interface CompanyRow {
   last_error: string | null;
   revenue_usd: number | null;
   headcount: number | null;
+  hiring_event_count: number | null;
 }
 
 // Mirrors the real `scoring_breakdown` table.
@@ -110,6 +111,7 @@ function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | nu
     scoringBreakdown,
     revenueUsd: row.revenue_usd,
     headcount: row.headcount,
+    hiringEventCount: row.hiring_event_count,
     country: "",
     importedBy: row.imported_by ?? "—",
     importedAt: row.created_at,

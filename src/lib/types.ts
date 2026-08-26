@@ -69,6 +69,7 @@ export interface Company {
   scoringBreakdown: ScoreCategory[];
   revenueUsd: number | null;
   headcount: number | null;
+  hiringEventCount: number | null;
   country: string;
   importedBy: string;
   importedAt: string;
