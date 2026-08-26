@@ -110,6 +110,34 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
 
   const items = companies;
   const [resolutions, setResolutions] = React.useState<Record<string, Resolution>>({});
+  const priorTriageReasonsRef = React.useRef<Record<string, TriageReason>>({});
+
+  // "resolving" is set once, right when a resolve is confirmed, and only ever
+  // means anything until the async n8n reprocessing actually finishes. Polling
+  // refreshes `companies` on a timer, but that alone never clears this flag —
+  // reconcile it here: once a company either leaves the triage list (moved on
+  // to scored/failed) or comes back with a different triage reason than it had
+  // when we set the flag, the reprocessing is done and the flag is stale.
+  React.useEffect(() => {
+    setResolutions((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [id, resolution] of Object.entries(prev)) {
+        if (resolution !== "resolving") continue;
+        const company = companies.find((c) => c.id === id);
+        const priorReason = priorTriageReasonsRef.current[id];
+        if (!company || company.triageReason !== priorReason) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    const reasons: Record<string, TriageReason> = {};
+    for (const c of companies) reasons[c.id] = c.triageReason;
+    priorTriageReasonsRef.current = reasons;
+  }, [companies]);
   const [edits, setEdits] = React.useState<Record<string, { sector: string; subSector: string }>>({});
   const [candidateSelections, setCandidateSelections] = React.useState<Record<string, string>>({});
   const [filter, setFilter] = React.useState<"all" | NonNullable<TriageReason>>(
