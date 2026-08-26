@@ -19,9 +19,15 @@ import { ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
+import type { IcpProfileRow } from "@/lib/data/icp-profiles";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { approveCompany, rejectCompany, confirmEntityResolution } from "@/app/(dashboard)/triage/actions";
+import {
+  approveCompany,
+  rejectCompany,
+  confirmEntityResolution,
+  rescoreAndApproveCompany,
+} from "@/app/(dashboard)/triage/actions";
 
 type Resolution = "pending" | "approved" | "rejected" | "resolving";
 
@@ -103,7 +109,7 @@ function isFlagged(company: Company): boolean {
   return needsEntityConfirmation(company) || company.matchFlag === "weak" || company.matchFlag === "no_match";
 }
 
-export function TriageWorkspace({ companies }: { companies: Company[] }) {
+export function TriageWorkspace({ companies, profiles }: { companies: Company[]; profiles: IcpProfileRow[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialReason = searchParams.get("reason") as TriageReason | null;
@@ -138,7 +144,7 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     for (const c of companies) reasons[c.id] = c.triageReason;
     priorTriageReasonsRef.current = reasons;
   }, [companies]);
-  const [edits, setEdits] = React.useState<Record<string, { sector: string; subSector: string }>>({});
+  const [edits, setEdits] = React.useState<Record<string, { sector: string; subSector: string; icpName: string }>>({});
   const [candidateSelections, setCandidateSelections] = React.useState<Record<string, string>>({});
   const [filter, setFilter] = React.useState<"all" | NonNullable<TriageReason>>(
     initialReason ?? "all",
@@ -169,15 +175,38 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
   const flaggedCount = unresolved.filter(isFlagged).length;
   const clearItems = unresolved.filter((c) => !isFlagged(c));
 
-  async function approve(company: Company) {
+  // Sub-sector is informational only, so editing it alone can save
+  // instantly. Sector and ICP both feed the score directly, so changing
+  // either needs a real rescore before the company can be treated as
+  // approved — see rescoreAndApproveCompany's comment for why.
+  function needsRescore(company: Company, sector: string, icpName: string) {
+    return sector !== company.sector || icpName !== company.icp;
+  }
+
+  async function approveOne(company: Company) {
     const edit = edits[company.id];
     const sector = edit?.sector ?? company.proposedSector ?? company.sector;
     const subSector = edit?.subSector ?? company.proposedSubSector ?? company.subSector;
+    const icpName = edit?.icpName ?? company.icp;
+
+    if (needsRescore(company, sector, icpName)) {
+      await rescoreAndApproveCompany(company.id, { sector, subSector, icpName });
+      setResolutions((prev) => ({ ...prev, [company.id]: "resolving" }));
+      toast.success(`Rescoring ${company.name} against ${icpName}`, {
+        description: "Will move to the target list automatically once the new score is in.",
+      });
+      return;
+    }
+
+    await approveCompany(company.id, sector, subSector);
+    setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
+    toast.success(`${company.name} approved`, { description: "Moved to the target list." });
+  }
+
+  async function approve(company: Company) {
     setPendingId(company.id);
     try {
-      await approveCompany(company.id, sector, subSector);
-      setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
-      toast.success(`${company.name} approved`, { description: "Moved to the target list." });
+      await approveOne(company);
       router.refresh();
     } catch (err) {
       toast.error("Approve failed", { description: err instanceof Error ? err.message : "Unknown error" });
@@ -230,11 +259,7 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     setBulkApproving(true);
     try {
       for (const company of clearItems) {
-        const edit = edits[company.id];
-        const sector = edit?.sector ?? company.proposedSector ?? company.sector;
-        const subSector = edit?.subSector ?? company.proposedSubSector ?? company.subSector;
-        await approveCompany(company.id, sector, subSector);
-        setResolutions((prev) => ({ ...prev, [company.id]: "approved" }));
+        await approveOne(company);
       }
       toast.success(`Approved ${clearItems.length} clear account${clearItems.length === 1 ? "" : "s"}`, {
         description: "Moved to the target list.",
@@ -304,9 +329,12 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
             <TriageCard
               key={c.id}
               company={c}
+              profiles={profiles}
               resolution={resolutions[c.id] ?? "pending"}
               edit={edits[c.id]}
-              onEditChange={(sector, subSector) => setEdits((prev) => ({ ...prev, [c.id]: { sector, subSector } }))}
+              onEditChange={(sector, subSector, icpName) =>
+                setEdits((prev) => ({ ...prev, [c.id]: { sector, subSector, icpName } }))
+              }
               candidateSelection={candidateSelections[c.id]}
               onCandidateSelect={(id) => setCandidateSelections((prev) => ({ ...prev, [c.id]: id }))}
               onApprove={() => approve(c)}
@@ -325,6 +353,7 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
 
 function TriageCard({
   company,
+  profiles,
   resolution,
   edit,
   onEditChange,
@@ -338,9 +367,10 @@ function TriageCard({
   onToggleEdit,
 }: {
   company: Company;
+  profiles: IcpProfileRow[];
   resolution: Resolution;
-  edit?: { sector: string; subSector: string };
-  onEditChange: (sector: string, subSector: string) => void;
+  edit?: { sector: string; subSector: string; icpName: string };
+  onEditChange: (sector: string, subSector: string, icpName: string) => void;
   candidateSelection?: string;
   onCandidateSelect: (id: string) => void;
   onApprove: () => void;
@@ -352,6 +382,7 @@ function TriageCard({
 }) {
   const sector = edit?.sector ?? company.proposedSector ?? "";
   const subSector = edit?.subSector ?? company.proposedSubSector ?? "";
+  const icpName = edit?.icpName ?? company.icp ?? "";
   const subSectorOptions = SECTORS.find((s) => s.sector === sector)?.subSectors ?? [];
   const resolved = resolution !== "pending";
 
@@ -478,41 +509,63 @@ function TriageCard({
           </div>
         )}
 
-        {!resolved && editing && company.triageReason === "low_confidence_sector" && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Sector</Label>
-              <Select
-                disabled={isPending}
-                value={sector}
-                onValueChange={(v) => onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SECTORS.map((s) => (
-                    <SelectItem key={s.sector} value={s.sector}>
-                      {s.sector}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {!resolved && editing && !needsEntityConfirmation(company) && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Sector</Label>
+                <Select
+                  disabled={isPending}
+                  value={sector}
+                  onValueChange={(v) =>
+                    onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "", icpName)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SECTORS.map((s) => (
+                      <SelectItem key={s.sector} value={s.sector}>
+                        {s.sector}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sub-sector</Label>
+                <Select disabled={isPending} value={subSector} onValueChange={(v) => onEditChange(sector, v, icpName)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subSectorOptions.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Sub-sector</Label>
-              <Select disabled={isPending} value={subSector} onValueChange={(v) => onEditChange(sector, v)}>
+              <Label>ICP profile</Label>
+              <Select disabled={isPending} value={icpName} onValueChange={(v) => onEditChange(sector, subSector, v)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Choose an ICP profile" />
                 </SelectTrigger>
                 <SelectContent>
-                  {subSectorOptions.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
+                  {profiles.map((p) => (
+                    <SelectItem key={p.id} value={p.icp_name}>
+                      {p.icp_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {(sector !== company.sector || icpName !== company.icp) && (
+                <p className="text-xs text-muted-foreground">Changing sector or ICP will trigger a rescore on accept.</p>
+              )}
             </div>
           </div>
         )}
