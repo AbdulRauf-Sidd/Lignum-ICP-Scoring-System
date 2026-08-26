@@ -29,6 +29,8 @@ interface CompanyRow {
   candidate_entities: CandidateEntity[] | null;
   creditsafe_match_strategy: string | null;
   last_error: string | null;
+  revenue_usd: number | null;
+  headcount: number | null;
 }
 
 // Mirrors the real `scoring_breakdown` table.
@@ -106,10 +108,8 @@ function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | nu
     score: row.score,
     confidence: row.classification_confidence,
     scoringBreakdown,
-    // Not persisted on `companies` yet — Scoring Engine reads these off the
-    // in-memory redeem response but nothing writes them back to the row.
-    revenueUsd: null,
-    headcount: null,
+    revenueUsd: row.revenue_usd,
+    headcount: row.headcount,
     country: "",
     importedBy: row.imported_by ?? "—",
     importedAt: row.created_at,

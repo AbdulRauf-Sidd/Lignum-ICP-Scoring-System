@@ -141,9 +141,10 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                 </Table>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Revenue and headcount aren&apos;t written back to the company row yet — the pipeline only holds
-                them in memory for scoring. The full per-field source breakdown (from `enrichment_data`) isn&apos;t
-                wired up here yet either.
+                Source shown is whichever provider the pipeline prefers by default (Creditsafe for revenue, Cognism
+                for headcount) — it doesn&apos;t yet reflect which one actually supplied this specific value when a
+                fallback was used. The full per-field source breakdown (from `enrichment_data`) isn&apos;t wired up
+                here yet either.
               </p>
             </CardContent>
           </Card>
