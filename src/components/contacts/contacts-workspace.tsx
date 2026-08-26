@@ -8,22 +8,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import type { Company } from "@/lib/types";
-import type { ContactRow, ContactStatus, DetailSource, EmailQuality } from "@/lib/data/contacts";
+import type { ContactRow, ContactStatus, EmailQuality } from "@/lib/data/contacts";
 import { findContacts, bulkRedeemContacts } from "@/app/(dashboard)/contacts/actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-const SOURCES: DetailSource[] = ["cognism", "syntax_match", "apollo", "prospeo"];
 
 const CONTACT_STATUS_STYLES: Record<ContactStatus, string> = {
   listed: "bg-muted text-muted-foreground",
@@ -117,9 +108,9 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = React.useState<"score" | "tier" | "name">("score");
   const [qualityFilter, setQualityFilter] = React.useState<"all" | NonNullable<EmailQuality>>("all");
-  const [sourceFilter, setSourceFilter] = React.useState<"all" | DetailSource>("all");
   const [findingCompanyId, setFindingCompanyId] = React.useState<string | null>(null);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
+  const busy = findingCompanyId !== null || pendingKey !== null;
 
   const groups = companies
     .filter((c) => !companyFilter || c.id === companyFilter)
@@ -127,8 +118,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       company,
       contacts: contacts
         .filter((ct) => ct.company_id === company.id)
-        .filter((ct) => qualityFilter === "all" || ct.email_quality === qualityFilter)
-        .filter((ct) => sourceFilter === "all" || ct.email_source === sourceFilter || ct.phone_source === sourceFilter),
+        .filter((ct) => qualityFilter === "all" || ct.email_quality === qualityFilter),
     }))
     .sort((a, b) => {
       if (sortBy === "name") return a.company.name.localeCompare(b.company.name);
@@ -231,23 +221,6 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
             ]}
           />
         </div>
-        <div className="flex items-center gap-1.5">
-          <Label className="text-xs text-muted-foreground">Source</Label>
-          <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as typeof sourceFilter)}>
-            <SelectTrigger className="h-8 w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All sources</SelectItem>
-              {SOURCES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {companyFilter && (
           <Badge variant="outline" className="gap-1.5">
             Filtered to one company
@@ -269,7 +242,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
           </div>
           <Button
             onClick={() => redeem("bulk", contacts.filter((c) => selected.has(c.id)))}
-            disabled={selected.size === 0 || pendingKey !== null}
+            disabled={selected.size === 0 || busy}
           >
             {pendingKey === "bulk" ? <Loader2 className="size-4 animate-spin" /> : <Sparkles />}
             Enrich selected ({selected.size})
@@ -309,11 +282,11 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                       </span>
                     )}
                     {ids.length > 0 && (
-                      <Button variant="outline" size="sm" onClick={() => toggleGroup(company.id, ids)}>
+                      <Button variant="outline" size="sm" onClick={() => toggleGroup(company.id, ids)} disabled={busy}>
                         {groupAllSelected ? "Deselect group" : "Select group"}
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => handleFindContacts(company)} disabled={isFinding}>
+                    <Button variant="outline" size="sm" onClick={() => handleFindContacts(company)} disabled={busy}>
                       {isFinding ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
                       Find contacts
                     </Button>
@@ -321,7 +294,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                       <Button
                         size="sm"
                         onClick={() => redeem(groupKey, groupContacts.filter((c) => ids.includes(c.id)))}
-                        disabled={pendingKey !== null}
+                        disabled={busy}
                       >
                         {pendingKey === groupKey ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                         Enrich all
@@ -407,7 +380,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                                 variant="outline"
                                 size="sm"
                                 onClick={() => redeem(contactKey, [ct])}
-                                disabled={pendingKey !== null}
+                                disabled={busy}
                               >
                                 {pendingKey === contactKey ? <Loader2 className="size-3.5 animate-spin" /> : "Enrich"}
                               </Button>

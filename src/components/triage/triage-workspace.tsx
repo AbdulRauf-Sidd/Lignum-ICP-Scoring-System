@@ -21,7 +21,7 @@ import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { approveCompany, confirmEntityResolution } from "@/app/(dashboard)/triage/actions";
+import { approveCompany, rejectCompany, confirmEntityResolution } from "@/app/(dashboard)/triage/actions";
 
 type Resolution = "pending" | "approved" | "rejected" | "resolving";
 
@@ -186,9 +186,18 @@ export function TriageWorkspace({ companies }: { companies: Company[] }) {
     }
   }
 
-  function reject(company: Company) {
-    setResolutions((prev) => ({ ...prev, [company.id]: "rejected" }));
-    toast(`${company.name} rejected`, { description: "Remains in triage for further review." });
+  async function reject(company: Company) {
+    setPendingId(company.id);
+    try {
+      await rejectCompany(company.id);
+      setResolutions((prev) => ({ ...prev, [company.id]: "rejected" }));
+      toast(`${company.name} rejected`);
+      router.refresh();
+    } catch (err) {
+      toast.error("Reject failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setPendingId(null);
+    }
   }
 
   async function confirmEntity(company: Company) {
@@ -413,7 +422,7 @@ function TriageCard({
         )}
         {resolution === "rejected" && (
           <Badge variant="outline" className="w-fit border-transparent bg-destructive/10 text-destructive">
-            Rejected — remains in triage
+            Rejected
           </Badge>
         )}
 

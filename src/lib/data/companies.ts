@@ -208,6 +208,11 @@ export async function getFailedCompanies(limit = 5): Promise<FailedCompaniesResu
     .from("companies")
     .select("id, name, domain, status, triage_reason, last_error", { count: "exact" })
     .eq("status", "failed")
+    // Rejected is a deliberate human decision, not something to surface with a
+    // "Retry in queue" CTA alongside genuine system/data failures. `.neq` alone
+    // would silently also drop null triage_reason rows (three-valued SQL logic),
+    // so the null case is explicitly kept via the `or`.
+    .or("triage_reason.neq.rejected,triage_reason.is.null")
     .order("updated_at", { ascending: false })
     .limit(limit);
 
@@ -272,6 +277,7 @@ export async function getEnrichmentQueue(limit = 20): Promise<FailedCompany[]> {
     .from("companies")
     .select("id, name, domain, status, triage_reason, last_error")
     .in("status", ["queued", "enriching", "failed"])
+    .or("triage_reason.neq.rejected,triage_reason.is.null")
     .order("updated_at", { ascending: false })
     .limit(limit);
 

@@ -12,6 +12,7 @@ export type TriageReason =
   | "insufficient_data"
   | "no_icp_profile"
   | "processing_error"
+  | "rejected"
   | null;
 
 export type LifecycleStatus = "prospect" | "exported" | "client";

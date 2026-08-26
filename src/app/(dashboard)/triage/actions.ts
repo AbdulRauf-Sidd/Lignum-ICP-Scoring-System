@@ -16,6 +16,18 @@ export async function approveCompany(companyId: string, sector: string, subSecto
   revalidatePath("/target-list");
 }
 
+export async function rejectCompany(companyId: string) {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("companies")
+    .update({ status: "failed", triage_reason: "rejected" })
+    .eq("id", companyId);
+
+  if (error) throw new Error(`Failed to reject company: ${error.message}`);
+
+  revalidatePath("/triage");
+}
+
 export async function confirmEntityResolution(
   companyId: string,
   candidate: { creditsafeCompanyId: string | null; cognismCompanyId: string | null },

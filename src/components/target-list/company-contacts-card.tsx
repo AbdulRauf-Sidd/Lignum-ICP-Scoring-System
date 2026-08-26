@@ -32,6 +32,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
 
   const listedIds = contacts.filter((c) => c.status === "listed").map((c) => c.id);
+  const busy = finding || pendingKey !== null;
 
   async function handleFindContacts() {
     setFinding(true);
@@ -71,7 +72,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle>Contacts ({contacts.length})</CardTitle>
         <div className="flex items-center gap-1.5">
-          <Button variant="outline" size="sm" onClick={handleFindContacts} disabled={finding}>
+          <Button variant="outline" size="sm" onClick={handleFindContacts} disabled={busy}>
             {finding ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
             Find contacts
           </Button>
@@ -79,7 +80,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
             <Button
               size="sm"
               onClick={() => redeem("bulk", contacts.filter((c) => listedIds.includes(c.id)))}
-              disabled={pendingKey !== null}
+              disabled={busy}
             >
               {pendingKey === "bulk" ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               Redeem all ({listedIds.length})
@@ -129,7 +130,7 @@ export function CompanyContactsCard({ company, contacts }: { company: Company; c
                     </Badge>
                   )}
                   {c.status === "listed" && (
-                    <Button variant="outline" size="sm" onClick={() => redeem(contactKey, [c])} disabled={pendingKey !== null}>
+                    <Button variant="outline" size="sm" onClick={() => redeem(contactKey, [c])} disabled={busy}>
                       {pendingKey === contactKey ? <Loader2 className="size-3.5 animate-spin" /> : "Redeem"}
                     </Button>
                   )}

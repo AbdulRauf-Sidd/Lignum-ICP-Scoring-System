@@ -34,6 +34,7 @@ const TRIAGE_REASON_LABELS: Partial<Record<NonNullable<TriageReason>, string>> =
   entity_ambiguous: "Entity ambiguous",
   creditsafe_fallback_match: "Fallback match",
   low_confidence_sector: "Low-confidence sector",
+  rejected: "Rejected",
 };
 
 export function TriageReasonBadge({ reason }: { reason: TriageReason }) {
