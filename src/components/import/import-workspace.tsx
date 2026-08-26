@@ -25,8 +25,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { StatusBadge } from "@/components/shared/badges";
-import type { FlaggedCompany } from "@/lib/data/companies";
+import { StatusBadge, TriageReasonBadge } from "@/components/shared/badges";
+import type { FailedCompany } from "@/lib/data/companies";
 import type { IcpProfileRow } from "@/lib/data/icp-profiles";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -69,7 +69,7 @@ export function ImportWorkspace({
   profiles,
 }: {
   scoredThisWeekCount: number;
-  queue: FlaggedCompany[];
+  queue: FailedCompany[];
   profiles: IcpProfileRow[];
 }) {
   const [rows, setRows] = React.useState<Row[]>([]);
@@ -403,7 +403,10 @@ export function ImportWorkspace({
                     <p className="truncate text-sm font-medium">{c.name}</p>
                     <p className="truncate text-xs text-muted-foreground">{c.domain}</p>
                   </div>
-                  <StatusBadge status={c.status} />
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {c.status === "failed" && <TriageReasonBadge reason={c.triageReason} />}
+                    <StatusBadge status={c.status} />
+                  </div>
                 </div>
               ))}
             </div>

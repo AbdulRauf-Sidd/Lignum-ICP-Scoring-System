@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { SECTORS } from "@/lib/constants";
-import type { CompanyStatus, MatchFlag, Tier } from "@/lib/types";
+import type { CompanyStatus, MatchFlag, Tier, TriageReason } from "@/lib/types";
 
 const STATUS_STYLES: Record<CompanyStatus, string> = {
   queued: "bg-muted text-muted-foreground",
@@ -23,6 +23,24 @@ export function StatusBadge({ status }: { status: CompanyStatus }) {
   return (
     <Badge variant="outline" className={cn("border-transparent font-medium", STATUS_STYLES[status])}>
       {STATUS_LABELS[status]}
+    </Badge>
+  );
+}
+
+const TRIAGE_REASON_LABELS: Partial<Record<NonNullable<TriageReason>, string>> = {
+  insufficient_data: "Insufficient data",
+  no_icp_profile: "No ICP profile",
+  processing_error: "Processing error",
+  entity_ambiguous: "Entity ambiguous",
+  creditsafe_fallback_match: "Fallback match",
+  low_confidence_sector: "Low-confidence sector",
+};
+
+export function TriageReasonBadge({ reason }: { reason: TriageReason }) {
+  if (!reason) return null;
+  return (
+    <Badge variant="outline" className="border-transparent bg-muted text-[10px] text-muted-foreground">
+      {TRIAGE_REASON_LABELS[reason] ?? reason}
     </Badge>
   );
 }

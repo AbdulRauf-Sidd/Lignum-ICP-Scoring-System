@@ -264,17 +264,24 @@ export async function getLowConfidenceCompanies(limit = 5): Promise<LowConfidenc
   return { items, count: count ?? 0 };
 }
 
-export async function getEnrichmentQueue(limit = 20): Promise<FlaggedCompany[]> {
+export async function getEnrichmentQueue(limit = 20): Promise<FailedCompany[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, domain, status")
+    .select("id, name, domain, status, triage_reason, last_error")
     .in("status", ["queued", "enriching", "failed"])
     .order("updated_at", { ascending: false })
     .limit(limit);
 
   if (error) throw new Error(`Failed to load enrichment queue: ${error.message}`);
-  return (data ?? []) as FlaggedCompany[];
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    domain: r.domain as string,
+    status: r.status as CompanyStatus,
+    triageReason: r.triage_reason as TriageReason,
+    lastError: r.last_error as string | null,
+  }));
 }
 
 export async function getTriageCompanies(): Promise<Company[]> {
