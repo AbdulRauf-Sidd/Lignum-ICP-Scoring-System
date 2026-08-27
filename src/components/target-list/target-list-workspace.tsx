@@ -91,7 +91,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const icpStats = React.useMemo(() => {
     const byIcp = new Map<string, IcpStats>();
     for (const name of ICP_NAMES) {
-      byIcp.set(name, computeStats(notArchived.filter((c) => c.sector === name)));
+      byIcp.set(name, computeStats(notArchived.filter((c) => c.icp === name)));
     }
     byIcp.set("all", computeStats(notArchived));
     return byIcp;
@@ -126,7 +126,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const enrichedEndMs = enrichedAtEnd ? new Date(enrichedAtEnd).getTime() + DAY_MS - 1 : null;
 
   const filtered = scoredCompanies
-    .filter((c) => tab === "all" || c.sector === tab)
+    .filter((c) => tab === "all" || c.icp === tab)
     .filter((c) => subSector === "all" || c.subSector === subSector)
     .filter((c) => tier === "all" || c.tier === tier)
     .filter((c) => (exportedFilter === "all" ? true : exportedFilter === "exported" ? c.exported : !c.exported))
@@ -584,8 +584,11 @@ function TargetListRow({
         </div>
       </TableCell>
       <TableCell>
-        <SectorBadge sector={company.sector} />
-        <p className="mt-1 text-xs text-muted-foreground">{company.subSector}</p>
+        <SectorBadge sector={company.icp} />
+        <p className="mt-1 text-xs text-muted-foreground">
+          {company.sector}
+          {company.subSector ? ` · ${company.subSector}` : ""}
+        </p>
       </TableCell>
       {view === "scorecard" ? (
         <>
