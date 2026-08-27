@@ -502,7 +502,30 @@ export function ConfigWorkspace({
         fit_rules: draft.fit_rules,
       });
       toast.success(`${draft.icp_name} saved`, { description: "Applies on next score or re-score." });
-      if (!draft.id) setActiveTab(id);
+
+      // Update the local "last known server state" baseline immediately,
+      // rather than waiting for router.refresh()'s round-trip to bring fresh
+      // props back — otherwise the dirty-check (and the nav-away guard) keep
+      // seeing stale synced data for the moment between save and refresh
+      // landing, and incorrectly still think there's something unsaved.
+      const savedRow: IcpProfileRow = {
+        id,
+        icp_name: draft.icp_name,
+        weight_icp_fit: draft.weight_icp_fit,
+        weight_scale_footprint: draft.weight_scale_footprint,
+        weight_hiring_growth: draft.weight_hiring_growth,
+        weight_financial_viability: draft.weight_financial_viability,
+        target_sectors: draft.target_sectors,
+        revenue_bands_usd: draft.revenue_bands_usd,
+        headcount_bands: draft.headcount_bands,
+        hiring_growth_bands: draft.hiring_growth_bands,
+        fit_rules: draft.fit_rules,
+      };
+      setSyncedProfiles((prev) => (prev.some((p) => p.id === id) ? prev.map((p) => (p.id === id ? savedRow : p)) : [...prev, savedRow]));
+      if (!draft.id) {
+        setDrafts((prev) => prev.map((d) => (d.clientKey === draft.clientKey ? { ...d, id } : d)));
+        setActiveTab(id);
+      }
       router.refresh();
       return true;
     } catch (err) {
@@ -560,6 +583,9 @@ export function ConfigWorkspace({
     try {
       await saveModelSettings(settingsDraft);
       toast.success("Settings saved", { description: "Applies on the next score or re-score." });
+      // Same reasoning as save() above -- update the local baseline now
+      // rather than waiting for router.refresh() to bring it back.
+      setSyncedSettings((prev) => ({ ...prev, ...settingsDraft, updated_at: new Date().toISOString() }));
       router.refresh();
       return true;
     } catch (err) {
