@@ -202,8 +202,8 @@ function BandEditor({
 
 interface FitRule {
   field: string;
-  operator: "lt" | "gt";
-  value: number;
+  operator: "lt" | "gt" | "is";
+  value: number | boolean;
   flag: string;
 }
 
@@ -217,9 +217,9 @@ function parseFitRules(json: string): FitRule[] | null {
           r &&
           typeof r === "object" &&
           typeof r.field === "string" &&
-          (r.operator === "lt" || r.operator === "gt") &&
-          typeof r.value === "number" &&
-          typeof r.flag === "string",
+          typeof r.flag === "string" &&
+          ((( r.operator === "lt" || r.operator === "gt") && typeof r.value === "number") ||
+            (r.operator === "is" && typeof r.value === "boolean")),
       )
     ) {
       return null;
@@ -231,15 +231,21 @@ function parseFitRules(json: string): FitRule[] | null {
 }
 
 function formatRuleExpr(rule: FitRule): string {
+  if (rule.operator === "is") return `${rule.field} is ${rule.value}`;
   return `${rule.field} ${rule.operator === "lt" ? "<" : ">"} ${rule.value}`;
 }
 
-const RULE_EXPR_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(<|>)\s*(-?\d+(?:\.\d+)?)\s*$/;
+const RULE_NUMERIC_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(<|>)\s*(-?\d+(?:\.\d+)?)\s*$/;
+const RULE_BOOLEAN_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+is\s+(true|false)\s*$/i;
 
-function parseRuleExpr(expr: string): { field: string; operator: "lt" | "gt"; value: number } | null {
-  const m = expr.match(RULE_EXPR_RE);
-  if (!m) return null;
-  return { field: m[1], operator: m[2] === "<" ? "lt" : "gt", value: Number(m[3]) };
+function parseRuleExpr(
+  expr: string,
+): { field: string; operator: "lt" | "gt"; value: number } | { field: string; operator: "is"; value: boolean } | null {
+  const numeric = expr.match(RULE_NUMERIC_RE);
+  if (numeric) return { field: numeric[1], operator: numeric[2] === "<" ? "lt" : "gt", value: Number(numeric[3]) };
+  const bool = expr.match(RULE_BOOLEAN_RE);
+  if (bool) return { field: bool[1], operator: "is", value: bool[2].toLowerCase() === "true" };
+  return null;
 }
 
 // Fit rules define a profile: a hard requirement that fails flags the
@@ -752,7 +758,10 @@ export function ConfigWorkspace({
                         <CardTitle>Fit rules</CardTitle>
                         <CardDescription>
                           A hard requirement that fails flags the company as a weak / wrong-ICP match and holds its
-                          score low.
+                          score low. Numeric fields (headcount, revenue, creditRating) use{" "}
+                          <code className="font-mono">field &lt; value</code> or{" "}
+                          <code className="font-mono">field &gt; value</code>; boolean fields (hasBankruptcy,
+                          hasActiveLawsuit) use <code className="font-mono">field is true</code>.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
