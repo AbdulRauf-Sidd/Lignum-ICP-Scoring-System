@@ -13,6 +13,7 @@ export interface IcpProfileInput {
   target_sectors: string[];
   revenue_bands_usd: string;
   headcount_bands: string;
+  hiring_growth_bands: string;
   fit_rules: string;
 }
 
@@ -35,6 +36,7 @@ export async function saveIcpProfile(input: IcpProfileInput): Promise<{ id: stri
   }
   assertValidJson("Revenue bands", input.revenue_bands_usd);
   assertValidJson("Headcount bands", input.headcount_bands);
+  assertValidJson("Hiring & growth bands", input.hiring_growth_bands);
   assertValidJson("Fit rules", input.fit_rules);
 
   const supabase = getSupabaseServerClient();
@@ -47,6 +49,7 @@ export async function saveIcpProfile(input: IcpProfileInput): Promise<{ id: stri
     target_sectors: input.target_sectors,
     revenue_bands_usd: input.revenue_bands_usd,
     headcount_bands: input.headcount_bands,
+    hiring_growth_bands: input.hiring_growth_bands,
     fit_rules: input.fit_rules,
   };
 

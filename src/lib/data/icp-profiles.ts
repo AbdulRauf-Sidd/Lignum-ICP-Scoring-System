@@ -13,6 +13,7 @@ export interface IcpProfileRow {
   target_sectors: string[];
   revenue_bands_usd: string;
   headcount_bands: string;
+  hiring_growth_bands: string;
   fit_rules: string;
 }
 

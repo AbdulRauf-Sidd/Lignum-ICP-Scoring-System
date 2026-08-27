@@ -66,6 +66,7 @@ function blankDraft(): Draft {
     target_sectors: [],
     revenue_bands_usd: "[]",
     headcount_bands: "[]",
+    hiring_growth_bands: "[]",
     fit_rules: "[]",
   };
 }
@@ -433,6 +434,7 @@ export function ConfigWorkspace({
       JSON.stringify(a.target_sectors) === JSON.stringify(b.target_sectors) &&
       a.revenue_bands_usd === b.revenue_bands_usd &&
       a.headcount_bands === b.headcount_bands &&
+      a.hiring_growth_bands === b.hiring_growth_bands &&
       a.fit_rules === b.fit_rules
     );
   }
@@ -454,6 +456,7 @@ export function ConfigWorkspace({
     for (const [label, value] of [
       ["Revenue bands", draft.revenue_bands_usd],
       ["Headcount bands", draft.headcount_bands],
+      ["Hiring & growth bands", draft.hiring_growth_bands],
       ["Fit rules", draft.fit_rules],
     ] as const) {
       if (!jsonIsValid(value)) {
@@ -474,6 +477,7 @@ export function ConfigWorkspace({
         target_sectors: draft.target_sectors,
         revenue_bands_usd: draft.revenue_bands_usd,
         headcount_bands: draft.headcount_bands,
+        hiring_growth_bands: draft.hiring_growth_bands,
         fit_rules: draft.fit_rules,
       });
       toast.success(`${draft.icp_name} saved`, { description: "Applies on next score or re-score." });
@@ -695,7 +699,7 @@ export function ConfigWorkspace({
                       </CardContent>
                     </Card>
 
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                       <Card>
                         <CardHeader>
                           <CardTitle>Revenue band → score</CardTitle>
@@ -703,7 +707,7 @@ export function ConfigWorkspace({
                         <CardContent>
                           <BandEditor
                             label="Revenue bands (USD)"
-                            hint="Annual revenue mapped to a scale & footprint sub-score."
+                            hint="Annual revenue mapped to a financial viability sub-score."
                             value={d.revenue_bands_usd}
                             onChange={(v) => updateDraft(d.clientKey, { revenue_bands_usd: v })}
                             disabled={isPending}
@@ -721,6 +725,21 @@ export function ConfigWorkspace({
                             hint="Employee count mapped to a scale & footprint sub-score."
                             value={d.headcount_bands}
                             onChange={(v) => updateDraft(d.clientKey, { headcount_bands: v })}
+                            disabled={isPending}
+                            kind="number"
+                          />
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Hiring & growth band → score</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <BandEditor
+                            label="Hiring & growth bands"
+                            hint="Recent hiring-event count (last 180 days) mapped to a hiring & growth sub-score."
+                            value={d.hiring_growth_bands}
+                            onChange={(v) => updateDraft(d.clientKey, { hiring_growth_bands: v })}
                             disabled={isPending}
                             kind="number"
                           />
