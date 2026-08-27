@@ -392,19 +392,47 @@ export function ConfigWorkspace({
   const [settingsDraft, setSettingsDraft] = React.useState<ModelSettingsInput>(() => toSettingsInput(settings));
   const [savingSettings, setSavingSettings] = React.useState(false);
 
-  const [syncedSettings, setSyncedSettings] = React.useState(settings);
-  if (settings !== syncedSettings) {
-    setSyncedSettings(settings);
-    setSettingsDraft(toSettingsInput(settings));
+  function draftEquals(a: Draft, b: Draft) {
+    return (
+      a.icp_name === b.icp_name &&
+      a.weight_icp_fit === b.weight_icp_fit &&
+      a.weight_scale_footprint === b.weight_scale_footprint &&
+      a.weight_hiring_growth === b.weight_hiring_growth &&
+      a.weight_financial_viability === b.weight_financial_viability &&
+      JSON.stringify(a.target_sectors) === JSON.stringify(b.target_sectors) &&
+      a.revenue_bands_usd === b.revenue_bands_usd &&
+      a.headcount_bands === b.headcount_bands &&
+      a.hiring_growth_bands === b.hiring_growth_bands &&
+      a.fit_rules === b.fit_rules
+    );
   }
 
-  // Reset local drafts when the server gives us fresh rows (after a
-  // save/delete triggers revalidatePath + router.refresh()) — adjusting
-  // state during render rather than in an effect avoids an extra render pass.
+  // The background AutoRefresh poll calls router.refresh() every 5s, which
+  // re-runs the server component and hands this a brand-new `profiles`/
+  // `settings` array reference every time -- even when nothing changed. Only
+  // accept that fresh data if there's nothing unsaved locally; otherwise an
+  // in-progress edit (e.g. a just-added fit rule that hasn't been saved yet)
+  // would get silently wiped within 5 seconds.
+  const [syncedSettings, setSyncedSettings] = React.useState(settings);
+  if (settings !== syncedSettings) {
+    const settingsDirtyNow = JSON.stringify(settingsDraft) !== JSON.stringify(toSettingsInput(syncedSettings));
+    setSyncedSettings(settings);
+    if (!settingsDirtyNow) {
+      setSettingsDraft(toSettingsInput(settings));
+    }
+  }
+
   const [syncedProfiles, setSyncedProfiles] = React.useState(profiles);
   if (profiles !== syncedProfiles) {
+    const draftsDirtyNow = drafts.some((d) => {
+      if (!d.id) return true;
+      const original = syncedProfiles.find((p) => p.id === d.id);
+      return !original || !draftEquals(d, rowToDraft(original));
+    });
     setSyncedProfiles(profiles);
-    setDrafts(profiles.map(rowToDraft));
+    if (!draftsDirtyNow) {
+      setDrafts(profiles.map(rowToDraft));
+    }
   }
 
   function updateDraft(clientKey: string, patch: Partial<Draft>) {
@@ -428,21 +456,6 @@ export function ConfigWorkspace({
     } catch {
       return false;
     }
-  }
-
-  function draftEquals(a: Draft, b: Draft) {
-    return (
-      a.icp_name === b.icp_name &&
-      a.weight_icp_fit === b.weight_icp_fit &&
-      a.weight_scale_footprint === b.weight_scale_footprint &&
-      a.weight_hiring_growth === b.weight_hiring_growth &&
-      a.weight_financial_viability === b.weight_financial_viability &&
-      JSON.stringify(a.target_sectors) === JSON.stringify(b.target_sectors) &&
-      a.revenue_bands_usd === b.revenue_bands_usd &&
-      a.headcount_bands === b.headcount_bands &&
-      a.hiring_growth_bands === b.hiring_growth_bands &&
-      a.fit_rules === b.fit_rules
-    );
   }
 
   const dirtyDrafts = drafts.filter((d) => {
