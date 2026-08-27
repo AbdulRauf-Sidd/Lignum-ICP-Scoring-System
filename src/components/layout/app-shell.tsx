@@ -105,6 +105,7 @@ function AppShellInner({
 
             <HeaderTitle />
 
+            {/* Notifications: temporarily removed from the UI, keep for later.
             <Button
               variant="outline"
               size="icon-lg"
@@ -118,6 +119,7 @@ function AppShellInner({
                 </Badge>
               )}
             </Button>
+            */}
             <ThemeToggle className="size-9 shrink-0" />
 
             <Button asChild size="lg" className="h-9 shrink-0 gap-1.5 px-4">

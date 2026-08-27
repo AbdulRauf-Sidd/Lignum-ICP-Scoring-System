@@ -66,7 +66,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
           <ScoreRing score={company.score} size={52} />
           <div>
             <p className="text-xs text-muted-foreground">Total score</p>
-            <p className="text-sm font-medium">{company.confidence ?? "—"}% confidence</p>
+            <p className="text-sm font-medium">{company.confidence ?? "—"}% sector confidence</p>
           </div>
         </div>
       </div>

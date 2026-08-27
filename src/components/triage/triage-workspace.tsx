@@ -423,7 +423,7 @@ function TriageCard({
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Confidence</p>
+              <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Sector confidence</p>
               <p className="mt-1 text-sm font-semibold tabular-nums">
                 {company.confidence !== null ? `${company.confidence}%` : "—"}
               </p>

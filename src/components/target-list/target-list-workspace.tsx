@@ -400,7 +400,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
                   <TableHead>Headcount</TableHead>
                 </>
               )}
-              <SortableHead label="Confidence" active={sortKey === "confidence"} desc={sortDesc} onClick={() => toggleSort("confidence")} />
+              <SortableHead label="Sector confidence" active={sortKey === "confidence"} desc={sortDesc} onClick={() => toggleSort("confidence")} />
               <SortableHead label="Score" active={sortKey === "score"} desc={sortDesc} onClick={() => toggleSort("score")} />
               <TableHead>Tier</TableHead>
               <SortableHead label="Enriched" active={sortKey === "enrichedAt"} desc={sortDesc} onClick={() => toggleSort("enrichedAt")} />

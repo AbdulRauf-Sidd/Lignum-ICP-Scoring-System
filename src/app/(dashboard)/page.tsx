@@ -47,7 +47,7 @@ const ATTENTION_META: Record<AttentionType, { label: string; dot: string; chip: 
     value: "text-destructive",
   },
   low_confidence: {
-    label: "Low confidence",
+    label: "Low sector confidence",
     dot: "bg-amber-500",
     chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
     value: "text-amber-600 dark:text-amber-400",
@@ -116,8 +116,8 @@ export default async function HomePage() {
     })),
     ...lowConfidence.items.map((c) => ({
       type: "low_confidence" as const,
-      title: "Low data confidence",
-      detail: `${c.name} — scored at ${c.confidence}% data confidence.`,
+      title: "Low sector confidence",
+      detail: `${c.name} — sector classified at ${c.confidence}% confidence.`,
       cta: openCta(c.status),
       href: openHref(c.id, c.status),
     })),
