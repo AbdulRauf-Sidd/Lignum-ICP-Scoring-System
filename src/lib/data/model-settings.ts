@@ -5,6 +5,8 @@ export interface ModelSettingsRow {
   id: string;
   tier_a_min: number;
   tier_b_min: number;
+  soft_rule_penalty: number;
+  hard_rule_penalty: number;
   contact_pull_on_demand: boolean;
   indicative_price_per_credit: number | null;
   re_pull_after_days: number;
@@ -20,6 +22,8 @@ export interface ModelSettingsRow {
 const DEFAULTS: Omit<ModelSettingsRow, "id" | "updated_at"> = {
   tier_a_min: 82,
   tier_b_min: 68,
+  soft_rule_penalty: 20,
+  hard_rule_penalty: 60,
   contact_pull_on_demand: true,
   indicative_price_per_credit: null,
   re_pull_after_days: 90,

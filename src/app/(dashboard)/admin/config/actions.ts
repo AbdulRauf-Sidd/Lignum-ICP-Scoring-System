@@ -83,6 +83,8 @@ export async function setSectorTaxonomyActive(id: string, active: boolean) {
 export interface ModelSettingsInput {
   tier_a_min: number;
   tier_b_min: number;
+  soft_rule_penalty: number;
+  hard_rule_penalty: number;
   contact_pull_on_demand: boolean;
   indicative_price_per_credit: number | null;
   re_pull_after_days: number;
@@ -97,6 +99,9 @@ export interface ModelSettingsInput {
 export async function saveModelSettings(input: ModelSettingsInput) {
   if (input.tier_a_min <= input.tier_b_min) {
     throw new Error("Tier A threshold must be higher than Tier B.");
+  }
+  if (input.hard_rule_penalty < input.soft_rule_penalty) {
+    throw new Error("Hard requirement penalty must be at least as large as the soft signal penalty.");
   }
   const healthSum = input.health_weight_qualitative + input.health_weight_talent + input.health_weight_adverse;
   if (healthSum !== 100) {

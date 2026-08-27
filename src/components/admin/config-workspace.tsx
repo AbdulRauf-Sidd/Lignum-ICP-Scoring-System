@@ -363,6 +363,8 @@ function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
   return {
     tier_a_min: row.tier_a_min,
     tier_b_min: row.tier_b_min,
+    soft_rule_penalty: row.soft_rule_penalty,
+    hard_rule_penalty: row.hard_rule_penalty,
     contact_pull_on_demand: row.contact_pull_on_demand,
     indicative_price_per_credit: row.indicative_price_per_credit,
     re_pull_after_days: row.re_pull_after_days,
@@ -544,6 +546,10 @@ export function ConfigWorkspace({
   async function saveSettings(): Promise<boolean> {
     if (settingsDraft.tier_a_min <= settingsDraft.tier_b_min) {
       toast.error("Tier A threshold must be higher than Tier B.");
+      return false;
+    }
+    if (settingsDraft.hard_rule_penalty < settingsDraft.soft_rule_penalty) {
+      toast.error("Hard requirement penalty must be at least as large as the soft signal penalty.");
       return false;
     }
     if (healthWeightSum !== 100) {
@@ -895,6 +901,48 @@ export function ConfigWorkspace({
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="size-2.5 shrink-0 rounded-full bg-slate-400" />
                   Tier C below {settingsDraft.tier_b_min}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Fit rule penalties</CardTitle>
+              <CardDescription>
+                How much a violated fit rule subtracts from ICP fit — a hard requirement costs more than a soft
+                signal, and either can force the whole company down to a weak or no-match tier.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Soft signal penalty</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-20"
+                    value={settingsDraft.soft_rule_penalty}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ soft_rule_penalty: Number(e.target.value) })}
+                  />
+                  <span className="text-sm text-muted-foreground">points off ICP fit</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Hard requirement penalty</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-20"
+                    value={settingsDraft.hard_rule_penalty}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ hard_rule_penalty: Number(e.target.value) })}
+                  />
+                  <span className="text-sm text-muted-foreground">points off ICP fit</span>
                 </div>
               </div>
             </CardContent>
