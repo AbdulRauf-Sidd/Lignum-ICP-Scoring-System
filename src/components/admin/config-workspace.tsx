@@ -201,9 +201,8 @@ function BandEditor({
 }
 
 interface FitRule {
-  field: string;
-  operator: "lt" | "gt" | "is";
-  value: number | boolean;
+  id: string;
+  description: string;
   flag: string;
 }
 
@@ -213,13 +212,7 @@ function parseFitRules(json: string): FitRule[] | null {
     if (!Array.isArray(val)) return null;
     if (
       !val.every(
-        (r) =>
-          r &&
-          typeof r === "object" &&
-          typeof r.field === "string" &&
-          typeof r.flag === "string" &&
-          ((( r.operator === "lt" || r.operator === "gt") && typeof r.value === "number") ||
-            (r.operator === "is" && typeof r.value === "boolean")),
+        (r) => r && typeof r === "object" && typeof r.id === "string" && typeof r.description === "string" && typeof r.flag === "string",
       )
     ) {
       return null;
@@ -230,29 +223,16 @@ function parseFitRules(json: string): FitRule[] | null {
   }
 }
 
-function formatRuleExpr(rule: FitRule): string {
-  if (rule.operator === "is") return `${rule.field} is ${rule.value}`;
-  return `${rule.field} ${rule.operator === "lt" ? "<" : ">"} ${rule.value}`;
+function newRuleId(): string {
+  return `rule_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const RULE_NUMERIC_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(<|>)\s*(-?\d+(?:\.\d+)?)\s*$/;
-const RULE_BOOLEAN_RE = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+is\s+(true|false)\s*$/i;
-
-function parseRuleExpr(
-  expr: string,
-): { field: string; operator: "lt" | "gt"; value: number } | { field: string; operator: "is"; value: boolean } | null {
-  const numeric = expr.match(RULE_NUMERIC_RE);
-  if (numeric) return { field: numeric[1], operator: numeric[2] === "<" ? "lt" : "gt", value: Number(numeric[3]) };
-  const bool = expr.match(RULE_BOOLEAN_RE);
-  if (bool) return { field: bool[1], operator: "is", value: bool[2].toLowerCase() === "true" };
-  return null;
-}
-
-// Fit rules define a profile: a hard requirement that fails flags the
-// company as a weak / wrong-ICP match and holds its score low. Each row is
-// a plain-text condition ("field < value") plus a toggle for whether
-// failing it is a hard requirement (flag: no_match) or a soft signal
-// (flag: weak) -- mirrors the client's own Model config mockup.
+// Fit rules define a profile: a hard requirement that's true flags the
+// company as a weak / wrong-ICP match and subtracts from its ICP fit score;
+// a soft signal subtracts less. Each row is a plain-English condition that
+// an LLM (fed the company's full Creditsafe/Cognism data in n8n) judges
+// true or false per company -- no fixed field/operator syntax, since the
+// model can reason over any signal present in the raw enrichment data.
 function FitRuleEditor({
   value,
   onChange,
@@ -263,26 +243,14 @@ function FitRuleEditor({
   disabled?: boolean;
 }) {
   const rules = parseFitRules(value);
-  const [drafts, setDrafts] = React.useState<Record<number, string>>({});
 
   function commit(next: FitRule[]) {
     onChange(JSON.stringify(next));
   }
 
-  function updateExpr(index: number, text: string) {
-    setDrafts((prev) => ({ ...prev, [index]: text }));
-    const parsed = parseRuleExpr(text);
-    if (parsed && rules) {
-      commit(rules.map((r, i) => (i === index ? { ...r, ...parsed } : r)));
-    }
-  }
-
-  function clearDraft(index: number) {
-    setDrafts((prev) => {
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
+  function updateDescription(index: number, description: string) {
+    if (!rules) return;
+    commit(rules.map((r, i) => (i === index ? { ...r, description } : r)));
   }
 
   function updateHard(index: number, hard: boolean) {
@@ -293,11 +261,10 @@ function FitRuleEditor({
   function removeRule(index: number) {
     if (!rules) return;
     commit(rules.filter((_, i) => i !== index));
-    clearDraft(index);
   }
 
   function addRule() {
-    commit([...(rules ?? []), { field: "headcount", operator: "gt", value: 0, flag: "weak" }]);
+    commit([...(rules ?? []), { id: newRuleId(), description: "", flag: "weak" }]);
   }
 
   return (
@@ -316,18 +283,15 @@ function FitRuleEditor({
         <div className="overflow-hidden rounded-lg border">
           {rules.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">No fit rules yet.</p>}
           {rules.map((rule, i) => {
-            const text = drafts[i] ?? formatRuleExpr(rule);
-            const invalid = !parseRuleExpr(text);
             const hard = rule.flag === "no_match";
             return (
-              <div key={i} className={cn("flex items-center gap-3 px-3 py-2.5", i > 0 && "border-t")}>
+              <div key={rule.id} className={cn("flex items-center gap-3 px-3 py-2.5", i > 0 && "border-t")}>
                 <Input
-                  value={text}
+                  value={rule.description}
                   disabled={disabled}
-                  onChange={(e) => updateExpr(i, e.target.value)}
-                  onBlur={() => clearDraft(i)}
-                  placeholder="field < value"
-                  className={cn("h-8 flex-1 font-mono text-xs", invalid && "border-destructive")}
+                  onChange={(e) => updateDescription(i, e.target.value)}
+                  placeholder="e.g. Company has more than 400 employees"
+                  className="h-8 flex-1 text-xs"
                 />
                 <Badge
                   variant="outline"
@@ -802,11 +766,10 @@ export function ConfigWorkspace({
                       <CardHeader>
                         <CardTitle>Fit rules</CardTitle>
                         <CardDescription>
-                          A hard requirement that fails flags the company as a weak / wrong-ICP match and holds its
-                          score low. Numeric fields (headcount, revenue, creditRating) use{" "}
-                          <code className="font-mono">field &lt; value</code> or{" "}
-                          <code className="font-mono">field &gt; value</code>; boolean fields (hasBankruptcy,
-                          hasActiveLawsuit) use <code className="font-mono">field is true</code>.
+                          Describe any condition in plain English — an LLM reads the company&apos;s full Creditsafe
+                          and Cognism data and decides whether it&apos;s true for each company. A hard requirement
+                          that&apos;s true flags the company as a weak / wrong-ICP match and subtracts the hard
+                          penalty from ICP fit below; a soft signal subtracts the soft penalty instead.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
