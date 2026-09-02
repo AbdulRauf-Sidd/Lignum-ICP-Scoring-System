@@ -31,7 +31,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
 
   return (
     <div>
-      <PageHeader title="Accounts" description="Company records synced from Loxo — jobs, candidates and placements." />
+      <PageHeader title="Accounts" description="Company records synced from Loxo - jobs, candidates and placements." />
       <AccountsWorkspace
         accounts={accounts}
         selectedCompanyId={selectedCompanyId}

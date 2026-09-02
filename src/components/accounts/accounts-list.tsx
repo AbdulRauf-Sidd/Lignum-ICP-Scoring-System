@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,25 @@ import { cn } from "@/lib/utils";
 type SortKey = "name" | "status" | "revenue" | "updated";
 
 const PAGE_SIZE = 20;
+
+// First, last, current, and its neighbors — everything else collapses to an
+// ellipsis so the control stays a fixed, glanceable width no matter how many
+// pages there are.
+function pageNumbers(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const keep = new Set([1, total, current - 1, current, current + 1]);
+  const sorted = Array.from(keep)
+    .filter((p) => p >= 1 && p <= total)
+    .sort((a, b) => a - b);
+  const result: (number | "ellipsis")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) result.push("ellipsis");
+    result.push(p);
+    prev = p;
+  }
+  return result;
+}
 
 function StatTile({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
   return (
@@ -198,20 +217,50 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
       </Card>
 
       {filtered.length > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             Showing {(effectivePage - 1) * PAGE_SIZE + 1}–{Math.min(effectivePage * PAGE_SIZE, filtered.length)} of{" "}
             {filtered.length}
           </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={effectivePage <= 1} onClick={() => setPage(effectivePage - 1)}>
-              Previous
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={effectivePage <= 1}
+              onClick={() => setPage(effectivePage - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="size-3.5" />
             </Button>
-            <span className="text-xs text-muted-foreground">
-              Page {effectivePage} of {pageCount}
-            </span>
-            <Button variant="outline" size="sm" disabled={effectivePage >= pageCount} onClick={() => setPage(effectivePage + 1)}>
-              Next
+            {pageNumbers(effectivePage, pageCount).map((p, i) =>
+              p === "ellipsis" ? (
+                <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  aria-current={p === effectivePage ? "page" : undefined}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-md text-xs font-medium tabular-nums transition-colors",
+                    p === effectivePage
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {p}
+                </button>
+              ),
+            )}
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={effectivePage >= pageCount}
+              onClick={() => setPage(effectivePage + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="size-3.5" />
             </Button>
           </div>
         </div>
