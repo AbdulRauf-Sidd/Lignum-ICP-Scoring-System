@@ -17,6 +17,7 @@ import {
 import { SECTORS } from "@/lib/constants";
 import { ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
+import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
 import type { IcpProfileRow } from "@/lib/data/icp-profiles";
@@ -30,37 +31,6 @@ import {
 } from "@/app/(dashboard)/triage/actions";
 
 type Resolution = "pending" | "approved" | "rejected" | "resolving";
-
-const AVATAR_STYLES = [
-  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
-  "bg-rose-500/15 text-rose-700 dark:text-rose-400",
-  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
-];
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-function hashIndex(key: string, mod: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return hash % mod;
-}
-
-function CompanyAvatar({ id, name }: { id: string; name: string }) {
-  const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
-  return (
-    <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-md text-sm font-bold", style)}>
-      {initials(name)}
-    </span>
-  );
-}
 
 const SOURCE_LABELS: Record<string, string> = {
   creditsafe: "Creditsafe",
@@ -394,7 +364,7 @@ function TriageCard({
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
-            <CompanyAvatar id={company.id} name={company.name} />
+            <CompanyAvatar id={company.id} name={company.name} domain={company.domain} size={9} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold">{company.name}</h3>

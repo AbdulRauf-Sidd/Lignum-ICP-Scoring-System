@@ -21,6 +21,7 @@ import { ICP_NAMES, SECTORS } from "@/lib/constants";
 import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
+import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 import type { Company } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -468,60 +469,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-const AVATAR_STYLES = [
-  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
-  "bg-rose-500/15 text-rose-700 dark:text-rose-400",
-  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
-];
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-function hashIndex(key: string, mod: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return hash % mod;
-}
-
-function CompanyAvatar({ id, name, domain }: { id: string; name: string; domain?: string | null }) {
-  const [logoOk, setLogoOk] = React.useState(true);
-  const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
-
-  // Google's favicon service is keyed by domain and indexes almost any
-  // crawled site (unlike Clearbit's logo API, which only covers well-known
-  // brands and silently failed for every smaller B2B domain here). It
-  // returns a generic ~16px globe icon rather than an error for domains it
-  // has no real favicon for, so the onLoad size check below is what
-  // actually triggers the fallback in that case, not onError alone.
-  if (domain && logoOk) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- tiny third-party logo, not an LCP candidate; next/image would need a remotePattern for a decorative 32px avatar with a fallback already in place
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
-        alt=""
-        className="size-8 shrink-0 rounded-md border bg-white object-contain p-1"
-        onError={() => setLogoOk(false)}
-        onLoad={(e) => {
-          if (e.currentTarget.naturalWidth <= 16) setLogoOk(false);
-        }}
-      />
-    );
-  }
-
-  return (
-    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-bold", style)}>
-      {initials(name)}
-    </span>
   );
 }
 

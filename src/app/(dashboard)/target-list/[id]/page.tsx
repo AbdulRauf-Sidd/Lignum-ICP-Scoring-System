@@ -14,6 +14,7 @@ import { CompanyContactsCard } from "@/components/target-list/company-contacts-c
 export const dynamic = "force-dynamic";
 import { ScoreRing, ScoreBar } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
+import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { PageHeader } from "@/components/shared/page-header";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
 
@@ -34,32 +35,35 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
       </Button>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight">{company.name}</h1>
-            <TierBadge tier={company.tier} />
-            {company.exported && (
-              <Badge variant="outline" className="border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                Exported
-              </Badge>
-            )}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Globe className="size-3.5" /> {company.domain}
-            </span>
-            {company.country && (
+        <div className="flex items-start gap-3">
+          <CompanyAvatar id={company.id} name={company.name} domain={company.domain} size={12} />
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-semibold tracking-tight">{company.name}</h1>
+              <TierBadge tier={company.tier} />
+              {company.exported && (
+                <Badge variant="outline" className="border-transparent bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                  Exported
+                </Badge>
+              )}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
-                <MapPin className="size-3.5" /> {company.country}
+                <Globe className="size-3.5" /> {company.domain}
               </span>
-            )}
-            <span className="flex items-center gap-1">
-              <Building2 className="size-3.5" /> {company.sector || "Not classified"}
-              {company.subSector ? ` · ${company.subSector}` : ""}
-            </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="size-3.5" /> imported {formatDate(company.importedAt)}
-            </span>
+              {company.country && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="size-3.5" /> {company.country}
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <Building2 className="size-3.5" /> {company.sector || "Not classified"}
+                {company.subSector ? ` · ${company.subSector}` : ""}
+              </span>
+              <span className="flex items-center gap-1">
+                <Calendar className="size-3.5" /> imported {formatDate(company.importedAt)}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3 rounded-lg border px-4 py-2.5">
