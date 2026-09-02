@@ -332,6 +332,7 @@ function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
     hard_rule_penalty: row.hard_rule_penalty,
     contact_pull_on_demand: row.contact_pull_on_demand,
     indicative_price_per_credit: row.indicative_price_per_credit,
+    auto_repull_enabled: row.auto_repull_enabled,
     re_pull_after_days: row.re_pull_after_days,
     gbp_to_usd_rate: row.gbp_to_usd_rate,
     eur_to_usd_rate: row.eur_to_usd_rate,
@@ -941,7 +942,7 @@ export function ConfigWorkspace({
           <Card>
             <CardHeader>
               <CardTitle>Enrichment run settings</CardTitle>
-              <CardDescription>Used to estimate cost before an enrichment run, and to avoid re-pulling fresh records.</CardDescription>
+              <CardDescription>Used to estimate cost before an enrichment run.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-end gap-6">
               <div className="space-y-1.5">
@@ -961,15 +962,34 @@ export function ConfigWorkspace({
                 </div>
                 <p className="text-xs text-muted-foreground">Leave blank to hide the £ figure</p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between">
+              <div>
+                <CardTitle>Automatic re-pull</CardTitle>
+                <CardDescription>
+                  When enabled, every company is automatically re-enriched once its data is older than the interval
+                  below — without needing a new import.
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settingsDraft.auto_repull_enabled}
+                disabled={savingSettings}
+                onCheckedChange={(v) => updateSettings({ auto_repull_enabled: v })}
+              />
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-6">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Re-pull after</Label>
                 <div className="flex items-center gap-1.5">
                   <Input
                     type="number"
-                    min={0}
+                    min={1}
                     className="h-8 w-20"
                     value={settingsDraft.re_pull_after_days}
-                    disabled={savingSettings}
+                    disabled={savingSettings || !settingsDraft.auto_repull_enabled}
                     onChange={(e) => updateSettings({ re_pull_after_days: Number(e.target.value) })}
                   />
                   <span className="text-sm text-muted-foreground">days</span>

@@ -87,6 +87,7 @@ export interface ModelSettingsInput {
   hard_rule_penalty: number;
   contact_pull_on_demand: boolean;
   indicative_price_per_credit: number | null;
+  auto_repull_enabled: boolean;
   re_pull_after_days: number;
   gbp_to_usd_rate: number;
   eur_to_usd_rate: number;
