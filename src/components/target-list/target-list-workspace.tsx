@@ -494,20 +494,26 @@ function hashIndex(key: string, mod: number): number {
 }
 
 function CompanyAvatar({ id, name, domain }: { id: string; name: string; domain?: string | null }) {
-  const [logoFailed, setLogoFailed] = React.useState(false);
+  const [logoOk, setLogoOk] = React.useState(true);
   const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
 
-  // Clearbit's logo API is a free, keyless public service keyed by domain --
-  // no n8n/DB changes needed since every company already has one. Falls
-  // back to the colored-initials avatar for domains it has no logo for.
-  if (domain && !logoFailed) {
+  // Google's favicon service is keyed by domain and indexes almost any
+  // crawled site (unlike Clearbit's logo API, which only covers well-known
+  // brands and silently failed for every smaller B2B domain here). It
+  // returns a generic ~16px globe icon rather than an error for domains it
+  // has no real favicon for, so the onLoad size check below is what
+  // actually triggers the fallback in that case, not onError alone.
+  if (domain && logoOk) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- tiny third-party logo, not an LCP candidate; next/image would need a remotePattern for a decorative 32px avatar with a fallback already in place
       <img
-        src={`https://logo.clearbit.com/${domain}`}
+        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
         alt=""
-        className="size-8 shrink-0 rounded-md border bg-white object-contain"
-        onError={() => setLogoFailed(true)}
+        className="size-8 shrink-0 rounded-md border bg-white object-contain p-1"
+        onError={() => setLogoOk(false)}
+        onLoad={(e) => {
+          if (e.currentTarget.naturalWidth <= 16) setLogoOk(false);
+        }}
       />
     );
   }
