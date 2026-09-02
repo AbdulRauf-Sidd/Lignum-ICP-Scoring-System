@@ -33,6 +33,23 @@ export function formatUsd(value: number | null): string {
   }).format(value);
 }
 
+// Falls back to a plain grouped number when there's no known currency code
+// (or Intl doesn't recognize it) — safer than guessing a currency.
+export function formatCurrency(value: number | null, code: string | null): string {
+  if (value === null) return "—";
+  const plain = () => new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 }).format(value);
+  if (!code) return plain();
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return plain();
+  }
+}
+
 export function formatNumber(value: number | null): string {
   if (value === null) return "—";
   return new Intl.NumberFormat("en-GB").format(value);
