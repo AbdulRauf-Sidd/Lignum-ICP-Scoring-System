@@ -493,8 +493,25 @@ function hashIndex(key: string, mod: number): number {
   return hash % mod;
 }
 
-function CompanyAvatar({ id, name }: { id: string; name: string }) {
+function CompanyAvatar({ id, name, domain }: { id: string; name: string; domain?: string | null }) {
+  const [logoFailed, setLogoFailed] = React.useState(false);
   const style = AVATAR_STYLES[hashIndex(id, AVATAR_STYLES.length)];
+
+  // Clearbit's logo API is a free, keyless public service keyed by domain --
+  // no n8n/DB changes needed since every company already has one. Falls
+  // back to the colored-initials avatar for domains it has no logo for.
+  if (domain && !logoFailed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- tiny third-party logo, not an LCP candidate; next/image would need a remotePattern for a decorative 32px avatar with a fallback already in place
+      <img
+        src={`https://logo.clearbit.com/${domain}`}
+        alt=""
+        className="size-8 shrink-0 rounded-md border bg-white object-contain"
+        onError={() => setLogoFailed(true)}
+      />
+    );
+  }
+
   return (
     <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-bold", style)}>
       {initials(name)}
@@ -574,7 +591,7 @@ function TargetListRow({
         </TableCell>
         <TableCell>
         <div className="flex items-center gap-2.5">
-          <CompanyAvatar id={company.id} name={company.name} />
+          <CompanyAvatar id={company.id} name={company.name} domain={company.domain} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <Link href={`/target-list/${company.id}`} className="truncate font-medium hover:underline">
