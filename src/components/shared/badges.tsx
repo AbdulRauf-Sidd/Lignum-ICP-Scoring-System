@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { SECTORS } from "@/lib/constants";
+import { getIcpBadgeClass } from "@/lib/icp-colors";
 import type { CompanyStatus, MatchFlag, Tier, TriageReason } from "@/lib/types";
 
 const STATUS_STYLES: Record<CompanyStatus, string> = {
@@ -82,19 +82,10 @@ export function MatchFlagBadge({ flag }: { flag: MatchFlag | null }) {
   );
 }
 
-const SECTOR_STYLES = [
-  "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-  "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  "bg-teal-500/15 text-teal-700 dark:text-teal-400",
-];
-
 export function SectorBadge({ sector, className }: { sector: string | null; className?: string }) {
   if (!sector) return <span className="text-sm text-muted-foreground">—</span>;
-  const idx = SECTORS.findIndex((s) => s.sector === sector);
-  const style = SECTOR_STYLES[idx >= 0 ? idx % SECTOR_STYLES.length : 0];
   return (
-    <Badge variant="outline" className={cn("border-transparent font-medium", style, className)}>
+    <Badge variant="outline" className={cn("border-transparent font-medium", getIcpBadgeClass(sector), className)}>
       {sector}
     </Badge>
   );

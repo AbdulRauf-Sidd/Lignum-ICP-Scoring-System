@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
+import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
 import type { ModelSettingsRow } from "@/lib/data/model-settings";
@@ -636,7 +637,7 @@ export function ConfigWorkspace({
                     <span
                       className={cn(
                         "flex size-7 shrink-0 items-center justify-center rounded-md font-heading text-xs font-bold",
-                        active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                        getIcpAvatarClass(d.icp_name),
                       )}
                     >
                       {(d.icp_name || "?").charAt(0)}

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ICP_NAMES, SECTORS } from "@/lib/constants";
+import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
 import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
@@ -201,7 +202,11 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
               <span
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-md font-heading text-xs font-bold",
-                  active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                  isAll
+                    ? active
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                    : getIcpAvatarClass(name),
                 )}
               >
                 {isAll ? "Σ" : name.charAt(0)}

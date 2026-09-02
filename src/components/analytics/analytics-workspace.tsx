@@ -4,6 +4,7 @@ import * as React from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useChartPalette } from "@/hooks/use-chart-palette";
+import { getIcpColorIndex } from "@/lib/icp-colors";
 import type { MonthlyScoredPoint, SectorPerformance, TierCount, SectorCompanyCount } from "@/lib/data/analytics";
 
 export function AnalyticsWorkspace({
@@ -27,17 +28,17 @@ export function AnalyticsWorkspace({
           <CardTitle>Companies by sector</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {companiesBySector.map((s, i) => (
+          {companiesBySector.map((s) => (
             <div key={s.sector} className="flex items-center gap-3">
               <span
                 className="size-2.5 shrink-0 rounded-full"
-                style={{ background: palette.categorical[i % palette.categorical.length] }}
+                style={{ background: palette.categorical[getIcpColorIndex(s.sector)] }}
               />
               <span className="w-40 shrink-0 truncate text-sm">{s.sector}</span>
               <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                 <span
                   className="block h-full rounded-full"
-                  style={{ width: `${(s.count / maxSectorCount) * 100}%`, background: palette.categorical[i % palette.categorical.length] }}
+                  style={{ width: `${(s.count / maxSectorCount) * 100}%`, background: palette.categorical[getIcpColorIndex(s.sector)] }}
                 />
               </span>
               <span className="w-8 shrink-0 text-right text-sm font-medium tabular-nums">{s.count}</span>
@@ -87,8 +88,8 @@ export function AnalyticsWorkspace({
                   />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: "transparent" }} />
                   <Bar dataKey="scoredCount" radius={[0, 4, 4, 0]} maxBarSize={28} name="Scored companies">
-                    {sectorPerf.map((s, i) => (
-                      <Cell key={s.sector} fill={palette.categorical[i % palette.categorical.length]} />
+                    {sectorPerf.map((s) => (
+                      <Cell key={s.sector} fill={palette.categorical[getIcpColorIndex(s.sector)]} />
                     ))}
                   </Bar>
                 </BarChart>
