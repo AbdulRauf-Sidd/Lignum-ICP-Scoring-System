@@ -8,7 +8,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 // from candidates/events/placements against a job) is restricted to these
 // two categories — the other real values (Tier 3, Tier 3 Spec, Retainer,
 // Tom Wood, Dropout, null) are out of scope for this page.
-export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2"] as const;
+export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2", "T2-new", "T2T1"] as const;
 
 export interface AccountListItem {
   companyId: number;
