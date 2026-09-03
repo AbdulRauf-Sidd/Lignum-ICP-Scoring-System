@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
+import { ALLOWED_JOB_CATEGORIES } from "@/lib/data/accounts";
 import type { CurrencyAmount } from "@/lib/format";
 
 // A candidate can hit the same activity twice on the same job (re-sent CV,
@@ -19,26 +19,6 @@ const COUNT_DISTINCT_PERSONS = true;
 // for them here.)
 const FEE_TYPE_PERCENTAGE = 1;
 const FEE_TYPE_FLAT = 2;
-
-export interface AccountHeaderInput {
-  status: string;
-  ownedBy: string;
-}
-
-export async function updateAccountHeader(companyId: number, input: AccountHeaderInput) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase
-    .from("active_accounts")
-    .update({
-      status: input.status.trim(),
-      owned_by: input.ownedBy.trim(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("company_id", companyId);
-
-  if (error) throw new Error(`Failed to update account: ${error.message}`);
-  revalidatePath("/accounts");
-}
 
 export interface AccountMetrics {
   totalCvs: number;
@@ -86,11 +66,28 @@ function placementRevenue(row: PlacementRow): number | null {
 
 export async function getAccountMetrics(companyId: number, startDate: string, endDate: string): Promise<AccountMetrics> {
   const supabase = getSupabaseServerClient();
+
+  // Every metric below is scoped to Tier 1 / Tier 2 jobs only — resolve the
+  // company's tier 1/2 job ids first, then filter events and placements to
+  // just those jobs.
+  const { data: jobRows, error: jobsError } = await supabase
+    .from("active_accounts_jobs")
+    .select("job_id")
+    .eq("company_id", companyId)
+    .in("job_category", ALLOWED_JOB_CATEGORIES);
+  if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
+
+  const jobIds = (jobRows ?? []).map((r) => r.job_id as number);
+  if (jobIds.length === 0) {
+    return { totalCvs: 0, firstInterviews: 0, totalPlacements: 0, revenue: [], revenueUsd: 0, revenueRatesLive: true };
+  }
+
   const [{ data: eventRows, error: eventsError }, { data: placementRows, error: placementsError }] = await Promise.all([
     supabase
       .from("active_accounts_jobs_candidates_events")
       .select("person_id, activity_key")
       .eq("company_id", companyId)
+      .in("job_id", jobIds)
       .gte("created_at", startDate)
       .lte("created_at", endDate)
       .in("activity_key", ["moved_to_cv_sent", "client_interview"]),
@@ -98,6 +95,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
       .from("active_accounts_placements")
       .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
       .eq("company_id", companyId)
+      .in("job_id", jobIds)
       .gte("created_at", startDate)
       .lte("created_at", endDate),
   ]);

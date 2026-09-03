@@ -4,6 +4,12 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 // their currency/fee-type lookups. Separate dataset from `companies` — no
 // foreign key between them, keyed by Loxo's numeric `company_id`.
 
+// Everything job-scoped (the jobs table itself, and every metric derived
+// from candidates/events/placements against a job) is restricted to these
+// two categories — the other real values (Tier 3, Tier 3 Spec, Retainer,
+// Tom Wood, Dropout, null) are out of scope for this page.
+export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2"] as const;
+
 export interface AccountListItem {
   companyId: number;
   companyName: string;
@@ -126,6 +132,7 @@ export async function getAccountJobs(companyId: number): Promise<AccountJob[]> {
       "job_id, job_title, created_at, published_at, salary, salary_currency_id, job_type, job_category, fee, fee_type_id, fee_currency_id, salary_currency:currencies!salary_currency_id(code, symbol), fee_currency:currencies!fee_currency_id(code, symbol), fee_type:fee_type(fee_type_key)",
     )
     .eq("company_id", companyId)
+    .in("job_category", ALLOWED_JOB_CATEGORIES)
     .order("published_at", { ascending: false });
 
   if (error) throw new Error(`Failed to load active_accounts_jobs: ${error.message}`);
