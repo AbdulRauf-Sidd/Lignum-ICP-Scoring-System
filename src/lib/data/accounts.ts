@@ -20,8 +20,6 @@ export interface AccountHeader {
   companyUrl: string | null;
   status: string;
   ownedBy: string | null;
-  totalRevenue: number | null;
-  revenueCurrencyCode: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,35 +74,28 @@ interface AccountHeaderRow {
   company_url: string | null;
   status: string;
   owned_by: string | null;
-  total_revenue: number | null;
-  revenue_currency_id: number | null;
   created_at: string;
   updated_at: string;
-  revenue_currency: { code: string; symbol: string } | null;
 }
 
 export async function getAccountHeader(companyId: number): Promise<AccountHeader | null> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("active_accounts")
-    .select(
-      "company_id, company_name, company_url, status, owned_by, total_revenue, revenue_currency_id, created_at, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)",
-    )
+    .select("company_id, company_name, company_url, status, owned_by, created_at, updated_at")
     .eq("company_id", companyId)
     .maybeSingle();
 
   if (error) throw new Error(`Failed to load account header: ${error.message}`);
   if (!data) return null;
 
-  const r = data as unknown as AccountHeaderRow;
+  const r = data as AccountHeaderRow;
   return {
     companyId: r.company_id,
     companyName: r.company_name,
     companyUrl: r.company_url,
     status: r.status,
     ownedBy: r.owned_by,
-    totalRevenue: r.total_revenue,
-    revenueCurrencyCode: r.revenue_currency?.code ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

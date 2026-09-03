@@ -15,7 +15,6 @@ import { AccountJobsTable } from "@/components/accounts/account-jobs-table";
 import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
 import type { AccountListItem, AccountHeader, AccountJob } from "@/lib/data/accounts";
-import type { AccountMetrics as AccountMetricsData } from "@/app/(dashboard)/accounts/actions";
 import { updateAccountHeader } from "@/app/(dashboard)/accounts/actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,13 +24,11 @@ export function AccountsWorkspace({
   selectedCompanyId,
   header,
   jobs,
-  lifetime,
 }: {
   accounts: AccountListItem[];
   selectedCompanyId: number | null;
   header: AccountHeader | null;
   jobs: AccountJob[];
-  lifetime: AccountMetricsData | null;
 }) {
   const [navigating, setNavigating] = React.useState(false);
 
@@ -57,7 +54,7 @@ export function AccountsWorkspace({
         {!selectedCompanyId || !header ? (
           <AccountsList accounts={accounts} onNavigate={() => setNavigating(true)} />
         ) : (
-          <AccountDetail key={header.companyId} header={header} jobs={jobs} lifetime={lifetime} onNavigate={() => setNavigating(true)} />
+          <AccountDetail key={header.companyId} header={header} jobs={jobs} onNavigate={() => setNavigating(true)} />
         )}
       </div>
     </div>
@@ -67,12 +64,10 @@ export function AccountsWorkspace({
 function AccountDetail({
   header,
   jobs,
-  lifetime,
   onNavigate,
 }: {
   header: AccountHeader;
   jobs: AccountJob[];
-  lifetime: AccountMetricsData | null;
   onNavigate: () => void;
 }) {
   const router = useRouter();
@@ -173,7 +168,7 @@ function AccountDetail({
           </CardContent>
         </Card>
 
-        <AccountMetrics companyId={localHeader.companyId} header={localHeader} lifetime={lifetime} />
+        <AccountMetrics companyId={localHeader.companyId} />
 
         <AccountJobsTable jobs={jobs} companyId={localHeader.companyId} />
       </div>

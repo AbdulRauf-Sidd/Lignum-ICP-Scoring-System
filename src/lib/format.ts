@@ -50,6 +50,19 @@ export function formatCurrency(value: number | null, code: string | null): strin
   }
 }
 
+export interface CurrencyAmount {
+  code: string | null;
+  amount: number;
+}
+
+// A sum spanning placements in different currencies is kept as separate
+// per-currency totals rather than added together — combining them into one
+// number would misrepresent the total (no conversion happens anywhere here).
+export function formatMultiCurrency(amounts: CurrencyAmount[]): string {
+  if (amounts.length === 0) return "—";
+  return amounts.map((a) => formatCurrency(a.amount, a.code ?? "USD")).join(" + ");
+}
+
 export function formatNumber(value: number | null): string {
   if (value === null) return "—";
   return new Intl.NumberFormat("en-GB").format(value);

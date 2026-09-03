@@ -5,10 +5,16 @@ import { Banknote, Calculator, CheckCircle2, FileText, Loader2, MessagesSquare }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatMultiCurrency, formatNumber } from "@/lib/format";
 import { getAccountMetrics, type AccountMetrics as AccountMetricsData } from "@/app/(dashboard)/accounts/actions";
-import type { AccountHeader } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
+
+// `revenueUsd` is null when the exchange-rate feed is unreachable or one of
+// the currencies in the mix isn't in it — falls back to the honest per-
+// currency breakdown rather than showing a wrong or missing number.
+function formatRevenue(metrics: AccountMetricsData): string {
+  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD") : formatMultiCurrency(metrics.revenue);
+}
 
 type Preset = "7d" | "30d" | "quarter" | "custom";
 
@@ -74,15 +80,7 @@ function MetricCard({
   );
 }
 
-export function AccountMetrics({
-  companyId,
-  header,
-  lifetime,
-}: {
-  companyId: number;
-  header: AccountHeader;
-  lifetime: AccountMetricsData | null;
-}) {
+export function AccountMetrics({ companyId }: { companyId: number }) {
   const [preset, setPreset] = React.useState<Preset>("30d");
   const [customStart, setCustomStart] = React.useState(() => presetRange("30d").start);
   const [customEnd, setCustomEnd] = React.useState(() => presetRange("30d").end);
@@ -113,16 +111,16 @@ export function AccountMetrics({
     };
   }, [companyId, range.start, range.end]);
 
-  // Price/CV and Price/Interview pair the account's lifetime revenue with
-  // lifetime (not date-range-scoped) counts — mixing a static lifetime total
-  // with a date-filtered count would make the price swing wildly just from
-  // picking a narrower range, which isn't a real price change.
+  // Same USD revenue and counts as the cards above, both scoped to the
+  // selected date range — so the price moves only when the underlying
+  // activity does, not from switching between a lifetime figure and a
+  // windowed one. Converting first then dividing (rather than dividing each
+  // currency bucket and converting after) gives the same result but only
+  // needs the one already-converted total.
   const pricePerCv =
-    header.totalRevenue !== null && lifetime && lifetime.totalCvs > 0 ? header.totalRevenue / lifetime.totalCvs : null;
+    metrics && metrics.revenueUsd !== null && metrics.totalCvs > 0 ? metrics.revenueUsd / metrics.totalCvs : null;
   const pricePerInterview =
-    header.totalRevenue !== null && lifetime && lifetime.firstInterviews > 0
-      ? header.totalRevenue / lifetime.firstInterviews
-      : null;
+    metrics && metrics.revenueUsd !== null && metrics.firstInterviews > 0 ? metrics.revenueUsd / metrics.firstInterviews : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -156,8 +154,12 @@ export function AccountMetrics({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
           label="Total revenue"
-          value={formatCurrency(header.totalRevenue, header.revenueCurrencyCode ?? "USD")}
-          hint="Lifetime — not scoped to the date range"
+          value={metrics ? formatRevenue(metrics) : "—"}
+          hint={
+            metrics && metrics.revenueUsd !== null && metrics.revenue.length > 0
+              ? `Converted from ${formatMultiCurrency(metrics.revenue)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
+              : "From placements in this date range"
+          }
           tone="emerald"
           icon={Banknote}
         />
@@ -176,15 +178,15 @@ export function AccountMetrics({
         />
         <MetricCard
           label="Price / CV"
-          value={formatCurrency(pricePerCv, header.revenueCurrencyCode ?? "USD")}
-          hint="Lifetime revenue ÷ lifetime CVs"
+          value={formatCurrency(pricePerCv, "USD")}
+          hint="Revenue ÷ CVs, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
           label="Price / interview"
-          value={formatCurrency(pricePerInterview, header.revenueCurrencyCode ?? "USD")}
-          hint="Lifetime revenue ÷ lifetime interviews"
+          value={formatCurrency(pricePerInterview, "USD")}
+          hint="Revenue ÷ interviews, this date range"
           tone="teal"
           icon={Calculator}
         />

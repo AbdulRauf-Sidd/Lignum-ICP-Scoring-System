@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 const ACTIVITY_META: Record<string, { label: string; className: string }> = {
   moved_to_cv_sent: { label: "CV sent", className: "bg-sky-500/10 text-sky-600 dark:text-sky-400" },
   client_interview: { label: "Client interview", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
-  moved_to_placed: { label: "Placed", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  hired: { label: "Placed", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
 };
 
 function activityMeta(key: string): { label: string; className: string } {
