@@ -9,21 +9,35 @@ import { Badge } from "@/components/ui/badge";
 import { AccountsList } from "@/components/accounts/accounts-list";
 import { AccountMetrics } from "@/components/accounts/account-metrics";
 import { AccountJobsTable } from "@/components/accounts/account-jobs-table";
+import { AccountScorecard, AccountTalentInsights } from "@/components/accounts/account-insights";
 import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
-import type { AccountListItem, AccountHeader, AccountJob } from "@/lib/data/accounts";
+import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
+import type { AccountListItem, AccountHeader, AccountJob, QualitativeRating, TalentInsights, HealthWeights } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
+
+const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: string }> = {
+  healthy: { label: "Healthy", badge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500" },
+  watch: { label: "Watch", badge: "bg-amber-500/10 text-amber-600 dark:text-amber-400", bar: "bg-amber-500" },
+  at_risk: { label: "At risk", badge: "bg-red-500/10 text-red-600 dark:text-red-400", bar: "bg-red-500" },
+};
 
 export function AccountsWorkspace({
   accounts,
   selectedCompanyId,
   header,
   jobs,
+  qualitative,
+  talentInsights,
+  healthWeights,
 }: {
   accounts: AccountListItem[];
   selectedCompanyId: number | null;
   header: AccountHeader | null;
   jobs: AccountJob[];
+  qualitative: QualitativeRating[];
+  talentInsights: TalentInsights | null;
+  healthWeights: HealthWeights;
 }) {
   const [navigating, setNavigating] = React.useState(false);
 
@@ -49,7 +63,15 @@ export function AccountsWorkspace({
         {!selectedCompanyId || !header ? (
           <AccountsList accounts={accounts} onNavigate={() => setNavigating(true)} />
         ) : (
-          <AccountDetail key={header.companyId} header={header} jobs={jobs} onNavigate={() => setNavigating(true)} />
+          <AccountDetail
+            key={header.companyId}
+            header={header}
+            jobs={jobs}
+            qualitative={qualitative}
+            talentInsights={talentInsights}
+            healthWeights={healthWeights}
+            onNavigate={() => setNavigating(true)}
+          />
         )}
       </div>
     </div>
@@ -59,13 +81,28 @@ export function AccountsWorkspace({
 function AccountDetail({
   header,
   jobs,
+  qualitative,
+  talentInsights,
+  healthWeights,
   onNavigate,
 }: {
   header: AccountHeader;
   jobs: AccountJob[];
+  qualitative: QualitativeRating[];
+  talentInsights: TalentInsights | null;
+  healthWeights: HealthWeights;
   onNavigate: () => void;
 }) {
   const meta = statusMeta(header.status);
+
+  // Owned here (rather than left inside AccountScorecard/AccountTalentInsights)
+  // so a rating or talent-insight edit can update Account Health immediately —
+  // it's a pure client-side calculation, so there's no reason it should wait
+  // for a page reload to see a change made two components down.
+  const [qualitativeState, setQualitativeState] = React.useState(qualitative);
+  const [talentInsightsState, setTalentInsightsState] = React.useState(talentInsights);
+  const health = computeAccountHealth(qualitativeState, talentInsightsState, healthWeights);
+  const bandMeta = HEALTH_BAND_META[health.band];
 
   return (
     <div className="flex flex-col gap-4">
@@ -102,11 +139,34 @@ function AccountDetail({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Account health</span>
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl leading-none font-semibold tabular-nums">{health.score}</span>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", bandMeta.bar)} style={{ width: `${health.score}%` }} />
+                </div>
+                <Badge variant="outline" className={cn("border-transparent", bandMeta.badge)}>
+                  {bandMeta.label}
+                </Badge>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Qual {health.qualAvg.toFixed(1)}/5 · Talent {health.talentScore} · Adverse -{health.adversePenalty}
+              </span>
+              {health.isBaseline && (
+                <Badge variant="outline" className="border-transparent bg-muted text-[10px] text-muted-foreground">
+                  Not yet rated
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">Updated {formatDateTime(header.updatedAt)}</span>
             </div>
           </CardContent>
         </Card>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <AccountScorecard companyId={header.companyId} ratings={qualitativeState} onRatingsChange={setQualitativeState} />
+          <AccountTalentInsights companyId={header.companyId} insights={talentInsightsState} onInsightsChange={setTalentInsightsState} />
+        </div>
 
         <AccountMetrics companyId={header.companyId} />
 

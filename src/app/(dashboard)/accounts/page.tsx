@@ -1,6 +1,13 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { AccountsWorkspace } from "@/components/accounts/accounts-workspace";
-import { getAccountsList, getAccountHeader, getAccountJobs } from "@/lib/data/accounts";
+import {
+  getAccountsList,
+  getAccountHeader,
+  getAccountJobs,
+  getAccountQualitative,
+  getTalentInsights,
+  getHealthWeights,
+} from "@/lib/data/accounts";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 
 // Synced from Loxo on its own schedule, and status/owner are edited live —
@@ -15,14 +22,28 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
   const accounts = await getAccountsList();
   const selectedCompanyId = companyParam ? Number(companyParam) : null;
 
-  const [header, jobs] = selectedCompanyId
-    ? await Promise.all([getAccountHeader(selectedCompanyId), getAccountJobs(selectedCompanyId)])
-    : [null, []];
+  const [header, jobs, qualitative, talentInsights, healthWeights] = selectedCompanyId
+    ? await Promise.all([
+        getAccountHeader(selectedCompanyId),
+        getAccountJobs(selectedCompanyId),
+        getAccountQualitative(selectedCompanyId),
+        getTalentInsights(selectedCompanyId),
+        getHealthWeights(),
+      ])
+    : [null, [], [], null, { qual: 50, talent: 30, adverse: 20 }];
 
   return (
     <div>
       <PageHeader title="Accounts" description="Company records synced from Loxo - jobs, candidates and placements." />
-      <AccountsWorkspace accounts={accounts} selectedCompanyId={selectedCompanyId} header={header} jobs={jobs} />
+      <AccountsWorkspace
+        accounts={accounts}
+        selectedCompanyId={selectedCompanyId}
+        header={header}
+        jobs={jobs}
+        qualitative={qualitative}
+        talentInsights={talentInsights}
+        healthWeights={healthWeights}
+      />
     </div>
   );
 }

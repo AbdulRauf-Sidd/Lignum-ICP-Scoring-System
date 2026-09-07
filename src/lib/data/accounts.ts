@@ -124,6 +124,120 @@ interface AccountJobRow {
   fee_type: { fee_type_key: string } | null;
 }
 
+// The five dimensions of the manual client scorecard — matches the
+// `account_qualitative.metric` check constraint in
+// docs/migrations/002_account_scorecard.sql.
+export const QUALITATIVE_METRICS = [
+  "relationship_strength",
+  "delivery_satisfaction",
+  "growth_potential",
+  "payment_reliability",
+  "strategic_fit",
+] as const;
+
+export type QualitativeMetric = (typeof QUALITATIVE_METRICS)[number];
+
+export interface QualitativeRating {
+  metric: QualitativeMetric;
+  rating: number;
+  ratedBy: string | null;
+  ratedAt: string;
+  refreshDue: string | null;
+}
+
+interface QualitativeRow {
+  metric: string;
+  rating: number;
+  rated_by: string | null;
+  rated_at: string;
+  refresh_due: string | null;
+}
+
+export async function getAccountQualitative(companyId: number): Promise<QualitativeRating[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("account_qualitative")
+    .select("metric, rating, rated_by, rated_at, refresh_due")
+    .eq("company_id", companyId);
+
+  if (error) throw new Error(`Failed to load account_qualitative: ${error.message}`);
+
+  return ((data ?? []) as QualitativeRow[]).map((r) => ({
+    metric: r.metric as QualitativeMetric,
+    rating: r.rating,
+    ratedBy: r.rated_by,
+    ratedAt: r.rated_at,
+    refreshDue: r.refresh_due,
+  }));
+}
+
+export interface TalentInsights {
+  headcountChange: number | null;
+  attrition: number | null;
+  avgTenure: number | null;
+  enteredBy: string | null;
+  enteredAt: string;
+}
+
+interface TalentInsightsRow {
+  headcount_change: number | null;
+  attrition: number | null;
+  avg_tenure: number | null;
+  entered_by: string | null;
+  entered_at: string;
+}
+
+export async function getTalentInsights(companyId: number): Promise<TalentInsights | null> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("talent_insights")
+    .select("headcount_change, attrition, avg_tenure, entered_by, entered_at")
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to load talent_insights: ${error.message}`);
+  if (!data) return null;
+
+  const r = data as TalentInsightsRow;
+  return {
+    headcountChange: r.headcount_change,
+    attrition: r.attrition,
+    avgTenure: r.avg_tenure,
+    enteredBy: r.entered_by,
+    enteredAt: r.entered_at,
+  };
+}
+
+export interface HealthWeights {
+  qual: number;
+  talent: number;
+  adverse: number;
+}
+
+interface HealthWeightsRow {
+  health_weight_qualitative: number;
+  health_weight_talent: number;
+  health_weight_adverse: number;
+}
+
+export async function getHealthWeights(): Promise<HealthWeights> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("model_settings")
+    .select("health_weight_qualitative, health_weight_talent, health_weight_adverse")
+    .eq("id", "global")
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to load model_settings: ${error.message}`);
+
+  const r = data as HealthWeightsRow | null;
+  return {
+    qual: r?.health_weight_qualitative ?? 50,
+    talent: r?.health_weight_talent ?? 30,
+    adverse: r?.health_weight_adverse ?? 20,
+  };
+}
+
 export async function getAccountJobs(companyId: number): Promise<AccountJob[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
