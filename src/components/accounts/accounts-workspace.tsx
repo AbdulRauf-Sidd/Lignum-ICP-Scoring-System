@@ -10,10 +10,11 @@ import { AccountsList } from "@/components/accounts/accounts-list";
 import { AccountMetrics } from "@/components/accounts/account-metrics";
 import { AccountJobsTable } from "@/components/accounts/account-jobs-table";
 import { AccountScorecard, AccountTalentInsights } from "@/components/accounts/account-insights";
+import { AccountFirmographics } from "@/components/accounts/account-firmographics";
 import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
 import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
-import type { AccountListItem, AccountHeader, AccountJob, QualitativeRating, TalentInsights, HealthWeights } from "@/lib/data/accounts";
+import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
 
 const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: string }> = {
@@ -35,8 +36,8 @@ export function AccountsWorkspace({
   selectedCompanyId: number | null;
   header: AccountHeader | null;
   jobs: AccountJob[];
-  qualitative: QualitativeRating[];
-  talentInsights: TalentInsights | null;
+  qualitative: QualitativeRatings;
+  talentInsights: TalentInsights;
   healthWeights: HealthWeights;
 }) {
   const [navigating, setNavigating] = React.useState(false);
@@ -88,8 +89,8 @@ function AccountDetail({
 }: {
   header: AccountHeader;
   jobs: AccountJob[];
-  qualitative: QualitativeRating[];
-  talentInsights: TalentInsights | null;
+  qualitative: QualitativeRatings;
+  talentInsights: TalentInsights;
   healthWeights: HealthWeights;
   onNavigate: () => void;
 }) {
@@ -162,6 +163,8 @@ function AccountDetail({
             </div>
           </CardContent>
         </Card>
+
+        <AccountFirmographics companyUrl={header.companyUrl} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <AccountScorecard companyId={header.companyId} ratings={qualitativeState} onRatingsChange={setQualitativeState} />

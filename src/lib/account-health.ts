@@ -1,4 +1,4 @@
-import type { QualitativeMetric, QualitativeRating, TalentInsights, HealthWeights } from "@/lib/data/accounts";
+import type { QualitativeMetric, QualitativeRatings, TalentInsights, HealthWeights } from "@/lib/data/accounts";
 
 // Ports the account-health model from the design mockup
 // (docs/Lignum ICP Scoring.html) formula-for-formula — verified against its
@@ -38,21 +38,16 @@ export interface AccountHealth {
   isBaseline: boolean;
 }
 
-function talentScore(talent: TalentInsights | null): number {
-  const headcountChange = talent?.headcountChange ?? TALENT_DEFAULTS.headcountChange;
-  const attrition = talent?.attrition ?? TALENT_DEFAULTS.attrition;
-  const tenure = talent?.avgTenure ?? TALENT_DEFAULTS.tenure;
+function talentScore(talent: TalentInsights): number {
+  const headcountChange = talent.headcountChange ?? TALENT_DEFAULTS.headcountChange;
+  const attrition = talent.attrition ?? TALENT_DEFAULTS.attrition;
+  const tenure = talent.avgTenure ?? TALENT_DEFAULTS.tenure;
   const raw = 60 + headcountChange * 1.6 - (attrition - 12) * 2.2 + (tenure - 4) * 5;
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
-export function computeAccountHealth(
-  ratings: QualitativeRating[],
-  talent: TalentInsights | null,
-  weights: HealthWeights,
-): AccountHealth {
-  const byMetric = Object.fromEntries(ratings.map((r) => [r.metric, r.rating])) as Partial<Record<QualitativeMetric, number>>;
-  const qualAvg = QUALITATIVE_DIMENSIONS.reduce((sum, d) => sum + (byMetric[d] ?? QUAL_DEFAULT_RATING), 0) / QUALITATIVE_DIMENSIONS.length;
+export function computeAccountHealth(ratings: QualitativeRatings, talent: TalentInsights, weights: HealthWeights): AccountHealth {
+  const qualAvg = QUALITATIVE_DIMENSIONS.reduce((sum, d) => sum + (ratings[d] ?? QUAL_DEFAULT_RATING), 0) / QUALITATIVE_DIMENSIONS.length;
   const qual100 = (qualAvg / 5) * 100;
 
   const talent100 = talentScore(talent);
@@ -65,12 +60,15 @@ export function computeAccountHealth(
 
   const band: HealthBand = score >= 75 ? "healthy" : score >= 55 ? "watch" : "at_risk";
 
+  const noRatings = QUALITATIVE_DIMENSIONS.every((d) => ratings[d] === null);
+  const noTalent = talent.headcountChange === null && talent.attrition === null && talent.avgTenure === null;
+
   return {
     score,
     band,
     qualAvg,
     talentScore: talent100,
     adversePenalty,
-    isBaseline: ratings.length === 0 && talent === null,
+    isBaseline: noRatings && noTalent,
   };
 }

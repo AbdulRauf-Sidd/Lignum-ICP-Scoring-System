@@ -3,7 +3,13 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
-import { ALLOWED_JOB_CATEGORIES, type QualitativeMetric } from "@/lib/data/accounts";
+import {
+  ALLOWED_JOB_CATEGORIES,
+  QUALITATIVE_METRICS,
+  getAccountFirmographics,
+  type QualitativeMetric,
+  type AccountFirmographics,
+} from "@/lib/data/accounts";
 import type { CurrencyAmount } from "@/lib/format";
 
 // A candidate can hit the same activity twice on the same job (re-sent CV,
@@ -202,55 +208,32 @@ export async function getJobCandidates(jobId: number, companyId: number): Promis
   }));
 }
 
-// Days until a rating needs re-confirming, from the global model settings —
-// falls back to 90 only if that row is somehow missing (it's seeded by
-// docs/migrations/001_model_settings.sql and never deleted).
-async function getReviewReminderDays(supabase: ReturnType<typeof getSupabaseServerClient>): Promise<number> {
-  const { data } = await supabase.from("model_settings").select("review_reminder_days").eq("id", "global").maybeSingle();
-  return data?.review_reminder_days ?? 90;
-}
-
+// Scorecard ratings and talent insights are plain columns on active_accounts
+// now — current value only, no update history (see
+// docs/migrations/003_consolidate_scorecard_into_active_accounts.sql).
 export async function setQualitativeRating(companyId: number, metric: QualitativeMetric, rating: number) {
-  const supabase = getSupabaseServerClient();
   // Server Actions are directly-invocable endpoints, not gated by the page
   // component that renders their trigger — this page's route is already
   // admin-only in proxy.ts, but every mutation here re-checks anyway,
   // matching admin/users/actions.ts.
-  const [user, reminderDays] = await Promise.all([requireAdmin(), getReviewReminderDays(supabase)]);
-  const now = new Date();
-  const refreshDue = new Date(now.getTime() + reminderDays * 24 * 60 * 60 * 1000);
+  await requireAdmin();
 
-  const { error } = await supabase.from("account_qualitative").upsert(
-    {
-      company_id: companyId,
-      metric,
-      rating,
-      rated_by: user.name,
-      rated_at: now.toISOString(),
-      refresh_due: refreshDue.toISOString(),
-    },
-    { onConflict: "company_id,metric" },
-  );
+  // `metric` becomes a literal column key below — the QualitativeMetric type
+  // only constrains TypeScript callers, not a raw request hitting this
+  // action directly, so it's re-checked against the same allowlist at
+  // runtime before it's ever used as a key. Without this, an arbitrary
+  // string here could overwrite any column on active_accounts (status,
+  // owned_by, ...), not just a rating.
+  if (!QUALITATIVE_METRICS.includes(metric)) throw new Error(`Invalid metric: ${metric}`);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error(`Invalid rating: ${rating}`);
 
-  if (error) throw new Error(`Failed to save rating: ${error.message}`);
-}
-
-// Bumps every already-rated metric's rated_at/refresh_due to today, without
-// changing the ratings themselves — for confirming nothing's changed rather
-// than re-entering every value. Metrics with no rating yet aren't touched;
-// there's nothing to reconfirm.
-export async function markScorecardReviewed(companyId: number) {
   const supabase = getSupabaseServerClient();
-  const [user, reminderDays] = await Promise.all([requireAdmin(), getReviewReminderDays(supabase)]);
-  const now = new Date();
-  const refreshDue = new Date(now.getTime() + reminderDays * 24 * 60 * 60 * 1000);
-
   const { error } = await supabase
-    .from("account_qualitative")
-    .update({ rated_by: user.name, rated_at: now.toISOString(), refresh_due: refreshDue.toISOString() })
+    .from("active_accounts")
+    .update({ [metric]: rating, updated_at: new Date().toISOString() })
     .eq("company_id", companyId);
 
-  if (error) throw new Error(`Failed to mark scorecard reviewed: ${error.message}`);
+  if (error) throw new Error(`Failed to save rating: ${error.message}`);
 }
 
 export interface TalentInsightsInput {
@@ -260,20 +243,26 @@ export interface TalentInsightsInput {
 }
 
 export async function updateTalentInsights(companyId: number, input: TalentInsightsInput) {
+  await requireAdmin();
   const supabase = getSupabaseServerClient();
-  const user = await requireAdmin();
 
-  const { error } = await supabase.from("talent_insights").upsert(
-    {
-      company_id: companyId,
+  const { error } = await supabase
+    .from("active_accounts")
+    .update({
       headcount_change: input.headcountChange,
       attrition: input.attrition,
       avg_tenure: input.avgTenure,
-      entered_by: user.name,
-      entered_at: new Date().toISOString(),
-    },
-    { onConflict: "company_id" },
-  );
+      updated_at: new Date().toISOString(),
+    })
+    .eq("company_id", companyId);
 
   if (error) throw new Error(`Failed to save talent insights: ${error.message}`);
+}
+
+// Deliberately on-demand rather than fetched with the rest of the page —
+// the user wants this to only run when they click "Connect", not silently
+// re-match on every page load.
+export async function connectFirmographics(companyUrl: string | null): Promise<AccountFirmographics | null> {
+  await requireAdmin();
+  return getAccountFirmographics(companyUrl);
 }

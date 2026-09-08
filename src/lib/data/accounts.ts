@@ -124,9 +124,9 @@ interface AccountJobRow {
   fee_type: { fee_type_key: string } | null;
 }
 
-// The five dimensions of the manual client scorecard — matches the
-// `account_qualitative.metric` check constraint in
-// docs/migrations/002_account_scorecard.sql.
+// The five dimensions of the manual client scorecard — each is its own
+// column on active_accounts (see docs/migrations/003_consolidate_scorecard_into_active_accounts.sql),
+// current value only, no update history.
 export const QUALITATIVE_METRICS = [
   "relationship_strength",
   "delivery_satisfaction",
@@ -137,74 +137,63 @@ export const QUALITATIVE_METRICS = [
 
 export type QualitativeMetric = (typeof QUALITATIVE_METRICS)[number];
 
-export interface QualitativeRating {
-  metric: QualitativeMetric;
-  rating: number;
-  ratedBy: string | null;
-  ratedAt: string;
-  refreshDue: string | null;
-}
+export type QualitativeRatings = Record<QualitativeMetric, number | null>;
 
 interface QualitativeRow {
-  metric: string;
-  rating: number;
-  rated_by: string | null;
-  rated_at: string;
-  refresh_due: string | null;
+  relationship_strength: number | null;
+  delivery_satisfaction: number | null;
+  growth_potential: number | null;
+  payment_reliability: number | null;
+  strategic_fit: number | null;
 }
 
-export async function getAccountQualitative(companyId: number): Promise<QualitativeRating[]> {
+export async function getAccountQualitative(companyId: number): Promise<QualitativeRatings> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
-    .from("account_qualitative")
-    .select("metric, rating, rated_by, rated_at, refresh_due")
-    .eq("company_id", companyId);
+    .from("active_accounts")
+    .select("relationship_strength, delivery_satisfaction, growth_potential, payment_reliability, strategic_fit")
+    .eq("company_id", companyId)
+    .maybeSingle();
 
-  if (error) throw new Error(`Failed to load account_qualitative: ${error.message}`);
+  if (error) throw new Error(`Failed to load qualitative ratings: ${error.message}`);
 
-  return ((data ?? []) as QualitativeRow[]).map((r) => ({
-    metric: r.metric as QualitativeMetric,
-    rating: r.rating,
-    ratedBy: r.rated_by,
-    ratedAt: r.rated_at,
-    refreshDue: r.refresh_due,
-  }));
+  const r = (data ?? {}) as Partial<QualitativeRow>;
+  return {
+    relationship_strength: r.relationship_strength ?? null,
+    delivery_satisfaction: r.delivery_satisfaction ?? null,
+    growth_potential: r.growth_potential ?? null,
+    payment_reliability: r.payment_reliability ?? null,
+    strategic_fit: r.strategic_fit ?? null,
+  };
 }
 
 export interface TalentInsights {
   headcountChange: number | null;
   attrition: number | null;
   avgTenure: number | null;
-  enteredBy: string | null;
-  enteredAt: string;
 }
 
 interface TalentInsightsRow {
   headcount_change: number | null;
   attrition: number | null;
   avg_tenure: number | null;
-  entered_by: string | null;
-  entered_at: string;
 }
 
-export async function getTalentInsights(companyId: number): Promise<TalentInsights | null> {
+export async function getTalentInsights(companyId: number): Promise<TalentInsights> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
-    .from("talent_insights")
-    .select("headcount_change, attrition, avg_tenure, entered_by, entered_at")
+    .from("active_accounts")
+    .select("headcount_change, attrition, avg_tenure")
     .eq("company_id", companyId)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to load talent_insights: ${error.message}`);
-  if (!data) return null;
+  if (error) throw new Error(`Failed to load talent insights: ${error.message}`);
 
-  const r = data as TalentInsightsRow;
+  const r = (data ?? {}) as Partial<TalentInsightsRow>;
   return {
-    headcountChange: r.headcount_change,
-    attrition: r.attrition,
-    avgTenure: r.avg_tenure,
-    enteredBy: r.entered_by,
-    enteredAt: r.entered_at,
+    headcountChange: r.headcount_change ?? null,
+    attrition: r.attrition ?? null,
+    avgTenure: r.avg_tenure ?? null,
   };
 }
 
@@ -235,6 +224,141 @@ export async function getHealthWeights(): Promise<HealthWeights> {
     qual: r?.health_weight_qualitative ?? 50,
     talent: r?.health_weight_talent ?? 30,
     adverse: r?.health_weight_adverse ?? 20,
+  };
+}
+
+// Firmographics come from the separate prospecting `companies` table (no
+// foreign key to active_accounts — matched at read time by domain, since
+// that's the only thing the two datasets share). `companies.domain` is
+// stored inconsistently (some rows keep a "www." prefix, some don't), so
+// both tables are normalized to a bare hostname before comparing.
+export interface AccountFirmographics {
+  revenueUsd: number | null;
+  headcount: number | null;
+  creditRating: number | null;
+  hasBankruptcy: boolean | null;
+  hasActiveLawsuit: boolean | null;
+  foundedYear: number | null;
+  hq: string | null;
+  // Legal entity type (e.g. "Corporation", "Limited Liability"), not true
+  // ownership structure — this dataset has no parent/subsidiary/shareholder
+  // data anywhere, so this is the closest honest stand-in.
+  ownership: string | null;
+}
+
+function extractDomain(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const withScheme = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    return new URL(withScheme).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+interface FirmographicsRow {
+  id: string;
+  revenue_usd: number | null;
+  headcount: number | null;
+  credit_rating: number | null;
+  has_bankruptcy: boolean | null;
+  has_active_lawsuit: boolean | null;
+}
+
+// Only the parts of Creditsafe's full_report shape this reads — the real
+// payload has many more fields.
+interface CreditsafeReport {
+  report?: {
+    companyIdentification?: {
+      basicInformation?: {
+        companyRegistrationDate?: string;
+        contactAddress?: { city?: string; province?: string; country?: string };
+        legalForm?: { description?: string };
+      };
+    };
+  };
+}
+
+interface CreditsafeExtract {
+  foundedYear: number | null;
+  hq: string | null;
+  ownership: string | null;
+}
+
+// Founded year, HQ, and legal entity type all come from the matched
+// company's own Creditsafe report (enrichment_data.raw_response, source
+// "creditsafe" / call_type "full_report") — companyRegistrationDate for the
+// year, contactAddress for the city/state, legalForm.description for entity
+// type (the closest thing to "ownership" this data has — see the
+// AccountFirmographics.ownership comment). Malformed or missing JSON is
+// treated as "not available" rather than thrown, since this is best-effort
+// on top of an already-found match.
+function parseCreditsafeExtract(raw: string | null): CreditsafeExtract {
+  if (!raw) return { foundedYear: null, hq: null, ownership: null };
+  try {
+    const parsed = JSON.parse(raw) as CreditsafeReport;
+    const info = parsed.report?.companyIdentification?.basicInformation;
+    const regDate = info?.companyRegistrationDate;
+    const foundedYear = regDate ? new Date(regDate).getFullYear() : null;
+    const address = info?.contactAddress;
+    const hq = address?.city && address?.province ? `${titleCase(address.city)}, ${address.province}` : null;
+    const ownership = info?.legalForm?.description ?? null;
+    return { foundedYear: Number.isNaN(foundedYear) ? null : foundedYear, hq, ownership };
+  } catch {
+    return { foundedYear: null, hq: null, ownership: null };
+  }
+}
+
+// Creditsafe's address fields come back in ALL CAPS.
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Null return means "not yet enriched" — no usable domain on the account,
+// or no matching row in `companies` yet. A `companies` match with no
+// Creditsafe report on file still returns a result, just with
+// foundedYear/hq null.
+export async function getAccountFirmographics(companyUrl: string | null): Promise<AccountFirmographics | null> {
+  const domain = extractDomain(companyUrl);
+  if (!domain) return null;
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id, revenue_usd, headcount, credit_rating, has_bankruptcy, has_active_lawsuit")
+    .in("domain", [domain, `www.${domain}`])
+    .order("last_enriched_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to load companies: ${error.message}`);
+  if (!data) return null;
+
+  const r = data as FirmographicsRow;
+
+  const { data: reportRow, error: reportError } = await supabase
+    .from("enrichment_data")
+    .select("raw_response")
+    .eq("company_id", r.id)
+    .eq("source", "creditsafe")
+    .eq("call_type", "full_report")
+    .order("fetched_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (reportError) throw new Error(`Failed to load enrichment_data: ${reportError.message}`);
+
+  const { foundedYear, hq, ownership } = parseCreditsafeExtract(reportRow?.raw_response ?? null);
+
+  return {
+    revenueUsd: r.revenue_usd,
+    headcount: r.headcount,
+    creditRating: r.credit_rating,
+    hasBankruptcy: r.has_bankruptcy,
+    hasActiveLawsuit: r.has_active_lawsuit,
+    ownership,
+    foundedYear,
+    hq,
   };
 }
 

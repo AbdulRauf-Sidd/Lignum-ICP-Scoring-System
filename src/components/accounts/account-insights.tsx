@@ -4,19 +4,12 @@ import * as React from "react";
 import { Loader2, Star, Users2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatDate } from "@/lib/format";
-import {
-  setQualitativeRating,
-  markScorecardReviewed,
-  updateTalentInsights,
-  type TalentInsightsInput,
-} from "@/app/(dashboard)/accounts/actions";
+import { setQualitativeRating, updateTalentInsights, type TalentInsightsInput } from "@/app/(dashboard)/accounts/actions";
 import {
   QUALITATIVE_METRICS,
   type QualitativeMetric,
-  type QualitativeRating,
+  type QualitativeRatings,
   type TalentInsights as TalentInsightsData,
 } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
@@ -36,57 +29,26 @@ export function AccountScorecard({
   onRatingsChange,
 }: {
   companyId: number;
-  ratings: QualitativeRating[];
-  onRatingsChange?: (ratings: QualitativeRating[]) => void;
+  ratings: QualitativeRatings;
+  onRatingsChange?: (ratings: QualitativeRatings) => void;
 }) {
-  const [byMetric, setByMetric] = React.useState<Partial<Record<QualitativeMetric, QualitativeRating>>>(() =>
-    Object.fromEntries(ratings.map((r) => [r.metric, r])),
-  );
+  const [values, setValues] = React.useState(ratings);
   const [savingMetric, setSavingMetric] = React.useState<QualitativeMetric | null>(null);
-  const [markingReviewed, setMarkingReviewed] = React.useState(false);
-
-  const rated = Object.values(byMetric).filter((r): r is QualitativeRating => !!r);
-  // The oldest of the rated metrics — the whole card is only as "reviewed"
-  // as its stalest dimension.
-  const lastReviewed = rated.length ? rated.reduce((oldest, r) => (r.ratedAt < oldest ? r.ratedAt : oldest), rated[0].ratedAt) : null;
 
   async function rate(metric: QualitativeMetric, rating: number) {
     setSavingMetric(metric);
     try {
       await setQualitativeRating(companyId, metric, rating);
-      const next = {
-        ...byMetric,
-        [metric]: { metric, rating, ratedBy: byMetric[metric]?.ratedBy ?? null, ratedAt: new Date().toISOString(), refreshDue: null },
-      };
-      setByMetric(next);
+      const next = { ...values, [metric]: rating };
+      setValues(next);
       // Account Health (in the parent header) is a pure client-side
       // calculation over these ratings — pushing the update up here is what
       // makes it recompute instantly instead of waiting for the next page load.
-      onRatingsChange?.(Object.values(next).filter((r): r is QualitativeRating => !!r));
+      onRatingsChange?.(next);
     } catch (err) {
       toast.error("Failed to save rating", { description: err instanceof Error ? err.message : undefined });
     } finally {
       setSavingMetric(null);
-    }
-  }
-
-  async function markReviewed() {
-    setMarkingReviewed(true);
-    try {
-      await markScorecardReviewed(companyId);
-      const now = new Date().toISOString();
-      const next = { ...byMetric };
-      for (const metric of Object.keys(next) as QualitativeMetric[]) {
-        const existing = next[metric];
-        if (existing) next[metric] = { ...existing, ratedAt: now };
-      }
-      setByMetric(next);
-      onRatingsChange?.(Object.values(next).filter((r): r is QualitativeRating => !!r));
-      toast.success("Scorecard marked as reviewed");
-    } catch (err) {
-      toast.error("Failed to mark reviewed", { description: err instanceof Error ? err.message : undefined });
-    } finally {
-      setMarkingReviewed(false);
     }
   }
 
@@ -98,12 +60,7 @@ export function AccountScorecard({
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <Star className="size-3.5" />
             </span>
-            <div>
-              <h3 className="text-sm font-semibold">Client scorecard</h3>
-              <p className="text-xs text-muted-foreground">
-                {lastReviewed ? `Last reviewed ${formatDate(lastReviewed)}` : "Not yet rated"}
-              </p>
-            </div>
+            <h3 className="text-sm font-semibold">Client scorecard</h3>
           </div>
           <Badge variant="outline" className="border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
             1-5
@@ -112,7 +69,7 @@ export function AccountScorecard({
 
         <div className="flex flex-col divide-y">
           {QUALITATIVE_METRICS.map((metric) => {
-            const current = byMetric[metric]?.rating ?? 0;
+            const current = values[metric] ?? 0;
             const isSaving = savingMetric === metric;
             return (
               <div key={metric} className="flex items-center justify-between gap-3 py-2.5">
@@ -143,11 +100,6 @@ export function AccountScorecard({
             );
           })}
         </div>
-
-        <Button variant="outline" size="sm" className="mt-3 w-fit" onClick={markReviewed} disabled={markingReviewed || rated.length === 0}>
-          {markingReviewed && <Loader2 className="size-3.5 animate-spin" />}
-          Mark reviewed today
-        </Button>
       </CardContent>
     </Card>
   );
@@ -165,16 +117,10 @@ export function AccountTalentInsights({
   onInsightsChange,
 }: {
   companyId: number;
-  insights: TalentInsightsData | null;
+  insights: TalentInsightsData;
   onInsightsChange?: (insights: TalentInsightsData) => void;
 }) {
-  const [data, setData] = React.useState({
-    headcountChange: insights?.headcountChange ?? null,
-    attrition: insights?.attrition ?? null,
-    avgTenure: insights?.avgTenure ?? null,
-    enteredBy: insights?.enteredBy ?? null,
-    enteredAt: insights?.enteredAt ?? null,
-  });
+  const [data, setData] = React.useState(insights);
   const [drafts, setDrafts] = React.useState<Record<keyof TalentInsightsInput, string>>({
     headcountChange: data.headcountChange?.toString() ?? "",
     attrition: data.attrition?.toString() ?? "",
@@ -193,13 +139,12 @@ export function AccountTalentInsights({
 
     setSaving(key);
     try {
-      const next = { headcountChange: data.headcountChange, attrition: data.attrition, avgTenure: data.avgTenure, [key]: parsed };
+      const next = { ...data, [key]: parsed };
       await updateTalentInsights(companyId, next);
-      const updated = { ...next, enteredBy: data.enteredBy, enteredAt: new Date().toISOString() };
-      setData(updated);
+      setData(next);
       // Same reasoning as the scorecard — pushes the change up so Account
       // Health recomputes immediately instead of on the next page load.
-      onInsightsChange?.(updated);
+      onInsightsChange?.(next);
       toast.success("Talent insights updated");
     } catch (err) {
       toast.error("Failed to save talent insights", { description: err instanceof Error ? err.message : undefined });
@@ -217,12 +162,7 @@ export function AccountTalentInsights({
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400">
               <Users2 className="size-3.5" />
             </span>
-            <div>
-              <h3 className="text-sm font-semibold">Talent insights</h3>
-              <p className="text-xs text-muted-foreground">
-                {data.enteredAt ? `Last entered ${formatDate(data.enteredAt)}${data.enteredBy ? ` by ${data.enteredBy}` : ""}` : "Not yet entered"}
-              </p>
-            </div>
+            <h3 className="text-sm font-semibold">Talent insights</h3>
           </div>
           <Badge variant="outline" className="border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
             Manual
