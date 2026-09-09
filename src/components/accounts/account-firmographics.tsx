@@ -12,11 +12,11 @@ import { toast } from "sonner";
 
 // Matched from the separate prospecting `companies` table by domain, but
 // only when the user clicks Connect — never automatically on page load.
-// Founded/HQ/Ownership come from that company's Creditsafe report, when
-// one's on file (see getAccountFirmographics; Ownership is really legal
-// entity type — see the AccountFirmographics.ownership comment). There's no
-// sites-count data anywhere, so that one stays blank even after a
-// successful match — nothing here is invented.
+// Revenue/headcount/credit/founded/HQ/sites/ownership all come straight off
+// that company's `companies` row (see getAccountFirmographics; Ownership is
+// really legal entity type — see the AccountFirmographics.ownership
+// comment). Fields stay blank when the matched company hasn't been through
+// enrichment yet — nothing here is invented.
 function riskLabel(data: AccountFirmographicsData): string | null {
   if (data.hasBankruptcy === null && data.hasActiveLawsuit === null) return null;
   return data.hasBankruptcy || data.hasActiveLawsuit ? "Elevated" : "Low";
@@ -44,7 +44,7 @@ export function AccountFirmographics({ companyUrl }: { companyUrl: string | null
   const fields: { label: string; value: string | null }[] = [
     { label: "Revenue", value: data ? formatUsdCompact(data.revenueUsd) : null },
     { label: "Headcount", value: data ? formatNumber(data.headcount) : null },
-    { label: "Sites", value: null },
+    { label: "Sites", value: data ? formatNumber(data.numberOfSites) : null },
     { label: "HQ", value: data?.hq ?? null },
     { label: "Founded", value: data?.foundedYear ? String(data.foundedYear) : null },
     { label: "Credit", value: data && data.creditRating !== null ? `${data.creditRating}/100` : null },

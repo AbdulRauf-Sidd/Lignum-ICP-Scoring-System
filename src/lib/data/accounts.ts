@@ -240,6 +240,7 @@ export interface AccountFirmographics {
   hasActiveLawsuit: boolean | null;
   foundedYear: number | null;
   hq: string | null;
+  numberOfSites: number | null;
   // Legal entity type (e.g. "Corporation", "Limited Liability"), not true
   // ownership structure — this dataset has no parent/subsidiary/shareholder
   // data anywhere, so this is the closest honest stand-in.
@@ -257,67 +258,23 @@ function extractDomain(url: string | null): string | null {
 }
 
 interface FirmographicsRow {
-  id: string;
   revenue_usd: number | null;
   headcount: number | null;
   credit_rating: number | null;
   has_bankruptcy: boolean | null;
   has_active_lawsuit: boolean | null;
-}
-
-// Only the parts of Creditsafe's full_report shape this reads — the real
-// payload has many more fields.
-interface CreditsafeReport {
-  report?: {
-    companyIdentification?: {
-      basicInformation?: {
-        companyRegistrationDate?: string;
-        contactAddress?: { city?: string; province?: string; country?: string };
-        legalForm?: { description?: string };
-      };
-    };
-  };
-}
-
-interface CreditsafeExtract {
-  foundedYear: number | null;
-  hq: string | null;
+  founded_year: number | null;
+  headquarters: string | null;
+  number_of_sites: number | null;
   ownership: string | null;
 }
 
-// Founded year, HQ, and legal entity type all come from the matched
-// company's own Creditsafe report (enrichment_data.raw_response, source
-// "creditsafe" / call_type "full_report") — companyRegistrationDate for the
-// year, contactAddress for the city/state, legalForm.description for entity
-// type (the closest thing to "ownership" this data has — see the
-// AccountFirmographics.ownership comment). Malformed or missing JSON is
-// treated as "not available" rather than thrown, since this is best-effort
-// on top of an already-found match.
-function parseCreditsafeExtract(raw: string | null): CreditsafeExtract {
-  if (!raw) return { foundedYear: null, hq: null, ownership: null };
-  try {
-    const parsed = JSON.parse(raw) as CreditsafeReport;
-    const info = parsed.report?.companyIdentification?.basicInformation;
-    const regDate = info?.companyRegistrationDate;
-    const foundedYear = regDate ? new Date(regDate).getFullYear() : null;
-    const address = info?.contactAddress;
-    const hq = address?.city && address?.province ? `${titleCase(address.city)}, ${address.province}` : null;
-    const ownership = info?.legalForm?.description ?? null;
-    return { foundedYear: Number.isNaN(foundedYear) ? null : foundedYear, hq, ownership };
-  } catch {
-    return { foundedYear: null, hq: null, ownership: null };
-  }
-}
-
-// Creditsafe's address fields come back in ALL CAPS.
-function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 // Null return means "not yet enriched" — no usable domain on the account,
-// or no matching row in `companies` yet. A `companies` match with no
-// Creditsafe report on file still returns a result, just with
-// foundedYear/hq null.
+// or no matching row in `companies` yet. Founded year, HQ, sites count, and
+// legal entity type ("ownership" — see the AccountFirmographics.ownership
+// comment) are all columns n8n writes onto `companies` directly during
+// enrichment now, so this is a single-table read — no more re-parsing the
+// raw Creditsafe JSON from enrichment_data at request time.
 export async function getAccountFirmographics(companyUrl: string | null): Promise<AccountFirmographics | null> {
   const domain = extractDomain(companyUrl);
   if (!domain) return null;
@@ -325,7 +282,9 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("companies")
-    .select("id, revenue_usd, headcount, credit_rating, has_bankruptcy, has_active_lawsuit")
+    .select(
+      "revenue_usd, headcount, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership",
+    )
     .in("domain", [domain, `www.${domain}`])
     .order("last_enriched_at", { ascending: false, nullsFirst: false })
     .limit(1)
@@ -336,29 +295,16 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
 
   const r = data as FirmographicsRow;
 
-  const { data: reportRow, error: reportError } = await supabase
-    .from("enrichment_data")
-    .select("raw_response")
-    .eq("company_id", r.id)
-    .eq("source", "creditsafe")
-    .eq("call_type", "full_report")
-    .order("fetched_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (reportError) throw new Error(`Failed to load enrichment_data: ${reportError.message}`);
-
-  const { foundedYear, hq, ownership } = parseCreditsafeExtract(reportRow?.raw_response ?? null);
-
   return {
     revenueUsd: r.revenue_usd,
     headcount: r.headcount,
     creditRating: r.credit_rating,
     hasBankruptcy: r.has_bankruptcy,
     hasActiveLawsuit: r.has_active_lawsuit,
-    ownership,
-    foundedYear,
-    hq,
+    ownership: r.ownership,
+    foundedYear: r.founded_year,
+    hq: r.headquarters,
+    numberOfSites: r.number_of_sites,
   };
 }
 
