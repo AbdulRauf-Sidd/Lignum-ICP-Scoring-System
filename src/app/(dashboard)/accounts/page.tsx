@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { AccountsWorkspace } from "@/components/accounts/accounts-workspace";
-import { getAccountsList, getAccountHeader, getAccountJobs, getAccountQualitative, getTalentInsights, getHealthWeights } from "@/lib/data/accounts";
+import { getAccountsList, getAccountHeader, getAccountJobs, getAccountQualitative, getTalentInsights, getHealthWeights, getAccountFirmographics } from "@/lib/data/accounts";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 
 // Synced from Loxo on its own schedule, and status/owner are edited live —
@@ -31,6 +31,10 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
         { qual: 50, talent: 30, adverse: 20 },
       ];
 
+  // Depends on header.companyUrl, so it can't join the Promise.all above —
+  // only runs once we know whether there's a domain to match against.
+  const firmographics = selectedCompanyId ? await getAccountFirmographics(header?.companyUrl ?? null) : null;
+
   return (
     <div>
       <PageHeader title="Accounts" description="Company records synced from Loxo - jobs, candidates and placements." />
@@ -42,6 +46,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
         qualitative={qualitative}
         talentInsights={talentInsights}
         healthWeights={healthWeights}
+        firmographics={firmographics}
       />
     </div>
   );

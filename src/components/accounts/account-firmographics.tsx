@@ -1,46 +1,21 @@
-"use client";
-
-import * as React from "react";
-import { Loader2, Plug } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
-import { connectFirmographics } from "@/app/(dashboard)/accounts/actions";
 import type { AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
-import { toast } from "sonner";
 
-// Matched from the separate prospecting `companies` table by domain, but
-// only when the user clicks Connect — never automatically on page load.
-// Revenue/headcount/credit/founded/HQ/sites/ownership all come straight off
-// that company's `companies` row (see getAccountFirmographics; Ownership is
-// really legal entity type — see the AccountFirmographics.ownership
-// comment). Fields stay blank when the matched company hasn't been through
-// enrichment yet — nothing here is invented.
+// Matched from the separate prospecting `companies` table by domain, fetched
+// server-side alongside the rest of this account's data (see
+// getAccountFirmographics) — no on-demand "Connect" step. Revenue/headcount/
+// credit/founded/HQ/sites/ownership all come straight off that company's
+// `companies` row; Ownership is really legal entity type — see the
+// AccountFirmographics.ownership comment. Fields stay blank when no matching
+// company has been through enrichment yet — nothing here is invented.
 function riskLabel(data: AccountFirmographicsData): string | null {
   if (data.hasBankruptcy === null && data.hasActiveLawsuit === null) return null;
   return data.hasBankruptcy || data.hasActiveLawsuit ? "Elevated" : "Low";
 }
 
-type Status = "idle" | "loading" | "not_found" | "matched";
-
-export function AccountFirmographics({ companyUrl }: { companyUrl: string | null }) {
-  const [status, setStatus] = React.useState<Status>("idle");
-  const [data, setData] = React.useState<AccountFirmographicsData | null>(null);
-
-  async function connect() {
-    setStatus("loading");
-    try {
-      const result = await connectFirmographics(companyUrl);
-      setData(result);
-      setStatus(result ? "matched" : "not_found");
-      if (!result) toast.info("No matching company found for this domain yet");
-    } catch (err) {
-      setStatus("idle");
-      toast.error("Failed to connect firmographics", { description: err instanceof Error ? err.message : undefined });
-    }
-  }
-
+export function AccountFirmographics({ data }: { data: AccountFirmographicsData | null }) {
   const fields: { label: string; value: string | null }[] = [
     { label: "Revenue", value: data ? formatUsdCompact(data.revenueUsd) : null },
     { label: "Headcount", value: data ? formatNumber(data.headcount) : null },
@@ -52,22 +27,16 @@ export function AccountFirmographics({ companyUrl }: { companyUrl: string | null
     { label: "Ownership", value: data?.ownership ?? null },
   ];
 
-  const badgeText = status === "matched" ? "From enrichment" : status === "not_found" ? "Not yet enriched" : "Not connected";
-
   return (
     <Card>
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Firmographics</h3>
-          <div className="flex items-center gap-2">
+          {!data && (
             <Badge variant="outline" className="border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
-              {badgeText}
+              Not yet enriched
             </Badge>
-            <Button variant="outline" size="sm" onClick={connect} disabled={status === "loading"}>
-              {status === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />}
-              {status === "matched" || status === "not_found" ? "Reconnect" : "Connect"}
-            </Button>
-          </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
           {fields.map(({ label, value }) => (

@@ -14,7 +14,7 @@ import { AccountFirmographics } from "@/components/accounts/account-firmographic
 import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
 import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
-import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights } from "@/lib/data/accounts";
+import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights, AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
 
 const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: string }> = {
@@ -31,6 +31,7 @@ export function AccountsWorkspace({
   qualitative,
   talentInsights,
   healthWeights,
+  firmographics,
 }: {
   accounts: AccountListItem[];
   selectedCompanyId: number | null;
@@ -39,6 +40,7 @@ export function AccountsWorkspace({
   qualitative: QualitativeRatings;
   talentInsights: TalentInsights;
   healthWeights: HealthWeights;
+  firmographics: AccountFirmographicsData | null;
 }) {
   const [navigating, setNavigating] = React.useState(false);
 
@@ -71,6 +73,7 @@ export function AccountsWorkspace({
             qualitative={qualitative}
             talentInsights={talentInsights}
             healthWeights={healthWeights}
+            firmographics={firmographics}
             onNavigate={() => setNavigating(true)}
           />
         )}
@@ -85,6 +88,7 @@ function AccountDetail({
   qualitative,
   talentInsights,
   healthWeights,
+  firmographics,
   onNavigate,
 }: {
   header: AccountHeader;
@@ -92,6 +96,7 @@ function AccountDetail({
   qualitative: QualitativeRatings;
   talentInsights: TalentInsights;
   healthWeights: HealthWeights;
+  firmographics: AccountFirmographicsData | null;
   onNavigate: () => void;
 }) {
   const meta = statusMeta(header.status);
@@ -164,7 +169,7 @@ function AccountDetail({
           </CardContent>
         </Card>
 
-        <AccountFirmographics companyUrl={header.companyUrl} />
+        <AccountFirmographics data={firmographics} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <AccountScorecard companyId={header.companyId} ratings={qualitativeState} onRatingsChange={setQualitativeState} />

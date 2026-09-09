@@ -6,9 +6,7 @@ import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
 import {
   ALLOWED_JOB_CATEGORIES,
   QUALITATIVE_METRICS,
-  getAccountFirmographics,
   type QualitativeMetric,
-  type AccountFirmographics,
 } from "@/lib/data/accounts";
 import type { CurrencyAmount } from "@/lib/format";
 
@@ -257,12 +255,4 @@ export async function updateTalentInsights(companyId: number, input: TalentInsig
     .eq("company_id", companyId);
 
   if (error) throw new Error(`Failed to save talent insights: ${error.message}`);
-}
-
-// Deliberately on-demand rather than fetched with the rest of the page —
-// the user wants this to only run when they click "Connect", not silently
-// re-match on every page load.
-export async function connectFirmographics(companyUrl: string | null): Promise<AccountFirmographics | null> {
-  await requireAdmin();
-  return getAccountFirmographics(companyUrl);
 }
