@@ -228,12 +228,13 @@ function newRuleId(): string {
   return `rule_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// Fit rules define a profile: a hard requirement that's true flags the
-// company as a weak / wrong-ICP match and subtracts from its ICP fit score;
-// a soft signal subtracts less. Each row is a plain-English condition that
-// an LLM (fed the company's full Creditsafe/Cognism data in n8n) judges
-// true or false per company -- no fixed field/operator syntax, since the
-// model can reason over any signal present in the raw enrichment data.
+// Fit rules define a profile: each row is a plain-English REQUIREMENT the
+// company is expected to meet. An LLM (fed the company's Creditsafe/Cognism
+// data in n8n) judges whether each company satisfies it -- no fixed
+// field/operator syntax, since the model can reason over any signal present
+// in the enrichment data. A hard requirement the company does NOT meet
+// flags it as a weak / wrong-ICP match and subtracts from its ICP fit
+// score; a soft signal not met subtracts less.
 function FitRuleEditor({
   value,
   onChange,
@@ -768,10 +769,10 @@ export function ConfigWorkspace({
                       <CardHeader>
                         <CardTitle>Fit rules</CardTitle>
                         <CardDescription>
-                          Describe any condition in plain English — an LLM reads the company&apos;s full Creditsafe
-                          and Cognism data and decides whether it&apos;s true for each company. A hard requirement
-                          that&apos;s true flags the company as a weak / wrong-ICP match and subtracts the hard
-                          penalty from ICP fit below; a soft signal subtracts the soft penalty instead.
+                          Describe a requirement in plain English — an LLM reads the company&apos;s Creditsafe and
+                          Cognism data and checks whether each company meets it. A hard requirement that&apos;s{" "}
+                          <em>not</em> met flags the company as a weak / wrong-ICP match and subtracts the hard
+                          penalty from ICP fit below; a soft signal not met subtracts the soft penalty instead.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
