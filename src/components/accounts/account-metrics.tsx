@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatMultiCurrency, formatNumber } from "@/lib/format";
 import { getAccountMetrics, type AccountMetrics as AccountMetricsData } from "@/app/(dashboard)/accounts/actions";
+import { type DatePreset, DATE_PRESET_LABELS, datePresetRange, toDateInputValue } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
 // `revenueUsd` is null when the exchange-rate feed is unreachable or one of
@@ -16,30 +17,10 @@ function formatRevenue(metrics: AccountMetricsData): string {
   return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD") : formatMultiCurrency(metrics.revenue);
 }
 
-type Preset = "7d" | "30d" | "quarter" | "custom";
-
-function toDateInputValue(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function presetRange(preset: Preset): { start: string; end: string } {
-  const now = new Date();
-  const end = now;
-  if (preset === "7d") {
-    const start = new Date(now);
-    start.setDate(start.getDate() - 7);
-    return { start: toDateInputValue(start), end: toDateInputValue(end) };
-  }
-  if (preset === "30d") {
-    const start = new Date(now);
-    start.setDate(start.getDate() - 30);
-    return { start: toDateInputValue(start), end: toDateInputValue(end) };
-  }
-  // "quarter"
-  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
-  const start = new Date(now.getFullYear(), quarterStartMonth, 1);
-  return { start: toDateInputValue(start), end: toDateInputValue(end) };
-}
+// This dataset's real rows only ever go back a handful of years — early
+// enough to include everything without needing an actual "no lower bound"
+// query mode, which getAccountMetrics doesn't have.
+const EPOCH = "1970-01-01";
 
 const TONES = {
   emerald: { icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", value: "text-emerald-600 dark:text-emerald-400" },
@@ -81,20 +62,25 @@ function MetricCard({
 }
 
 export function AccountMetrics({ companyId }: { companyId: number }) {
-  const [preset, setPreset] = React.useState<Preset>("30d");
-  const [customStart, setCustomStart] = React.useState(() => presetRange("30d").start);
-  const [customEnd, setCustomEnd] = React.useState(() => presetRange("30d").end);
+  const [preset, setPreset] = React.useState<DatePreset>("all_time");
+  const [customStart, setCustomStart] = React.useState("");
+  const [customEnd, setCustomEnd] = React.useState("");
   const [metrics, setMetrics] = React.useState<AccountMetricsData | null>(null);
   const [loading, setLoading] = React.useState(true);
 
-  const range = preset === "custom" ? { start: customStart, end: customEnd } : presetRange(preset);
+  const range = datePresetRange(preset, customStart, customEnd);
+  // "All time" (and an not-yet-filled-in custom bound) has no real lower/upper
+  // limit — getAccountMetrics needs concrete dates, so an open end falls back
+  // to the widest possible window instead.
+  const rangeStart = range.start ?? EPOCH;
+  const rangeEnd = range.end ?? toDateInputValue(new Date());
 
   React.useEffect(() => {
     let cancelled = false;
     // End date is a plain day (YYYY-MM-DD) — push it to the end of that day so
     // the range is inclusive of everything that happened on it.
-    const startIso = new Date(`${range.start}T00:00:00.000Z`).toISOString();
-    const endIso = new Date(`${range.end}T23:59:59.999Z`).toISOString();
+    const startIso = new Date(`${rangeStart}T00:00:00.000Z`).toISOString();
+    const endIso = new Date(`${rangeEnd}T23:59:59.999Z`).toISOString();
     Promise.resolve()
       .then(() => {
         if (!cancelled) setLoading(true);
@@ -109,7 +95,7 @@ export function AccountMetrics({ companyId }: { companyId: number }) {
     return () => {
       cancelled = true;
     };
-  }, [companyId, range.start, range.end]);
+  }, [companyId, rangeStart, rangeEnd]);
 
   // Same USD revenue and counts as the cards above, both scoped to the
   // selected date range — so the price moves only when the underlying
@@ -125,15 +111,16 @@ export function AccountMetrics({ companyId }: { companyId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
-          <SelectTrigger className="w-44 bg-card">
+        <Select value={preset} onValueChange={(v) => setPreset(v as DatePreset)}>
+          <SelectTrigger className="w-40 bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-            <SelectItem value="quarter">This quarter</SelectItem>
-            <SelectItem value="custom">Custom range</SelectItem>
+            {DATE_PRESET_LABELS.map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         {preset === "custom" && (
