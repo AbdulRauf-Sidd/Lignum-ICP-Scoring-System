@@ -1,10 +1,11 @@
-import type { QualitativeMetric, QualitativeRatings, TalentInsights, HealthWeights } from "@/lib/data/accounts";
+import type { QualitativeMetric, QualitativeRatings, TalentInsights, HealthWeights, Band } from "@/lib/data/accounts";
 
 // Ports the account-health model from the design mockup
-// (docs/Lignum ICP Scoring.html) formula-for-formula — verified against its
-// own worked example (ratings 4/4/3/5/4, talent 86, adverse penalty 6 →
-// score 81, "Healthy"). `model_settings.health_weight_*` already holds the
-// same 50/30/20 default weights the mockup used.
+// (docs/Lignum ICP Scoring.html), then replaces two pieces the client asked
+// to make configurable: the Client Scorecard's 5 dimensions now combine via
+// per-dimension weights (sliders in Model config, sum to 100) instead of a
+// plain average, and each Talent Insights metric now maps through its own
+// band table (also Model config) instead of one hardcoded formula.
 //
 // The mockup's "Adverse -6" comes from randomly-generated demo events
 // (Creditsafe/Cognism data this app has no real feed for yet) — rather than
@@ -24,6 +25,11 @@ const QUALITATIVE_DIMENSIONS: QualitativeMetric[] = [
 // formula's own defined "nothing rated yet" starting point.
 const QUAL_DEFAULT_RATING = 3;
 const TALENT_DEFAULTS = { headcountChange: 0, attrition: 12, tenure: 5 };
+// Used when a metric's value doesn't fall inside any configured band (e.g.
+// the admin hasn't set up bands for it yet, or the value is outside every
+// range) — a neutral midpoint rather than 0, so a missing band config
+// doesn't tank the score.
+const NEUTRAL_BAND_SCORE = 50;
 
 export type HealthBand = "healthy" | "watch" | "at_risk";
 
@@ -38,19 +44,31 @@ export interface AccountHealth {
   isBaseline: boolean;
 }
 
-function talentScore(talent: TalentInsights): number {
+function scoreFromBands(value: number, bands: Band[]): number | null {
+  const band = bands.find((b) => value >= b.min && value < b.max);
+  return band ? band.score : null;
+}
+
+function talentScore(talent: TalentInsights, bands: HealthWeights["talentBands"]): number {
   const headcountChange = talent.headcountChange ?? TALENT_DEFAULTS.headcountChange;
   const attrition = talent.attrition ?? TALENT_DEFAULTS.attrition;
   const tenure = talent.avgTenure ?? TALENT_DEFAULTS.tenure;
-  const raw = 60 + headcountChange * 1.6 - (attrition - 12) * 2.2 + (tenure - 4) * 5;
-  return Math.max(0, Math.min(100, Math.round(raw)));
+
+  const headcountScore = scoreFromBands(headcountChange, bands.headcountChange) ?? NEUTRAL_BAND_SCORE;
+  const attritionScore = scoreFromBands(attrition, bands.attrition) ?? NEUTRAL_BAND_SCORE;
+  const tenureScore = scoreFromBands(tenure, bands.avgTenure) ?? NEUTRAL_BAND_SCORE;
+
+  return Math.round((headcountScore + attritionScore + tenureScore) / 3);
 }
 
 export function computeAccountHealth(ratings: QualitativeRatings, talent: TalentInsights, weights: HealthWeights): AccountHealth {
-  const qualAvg = QUALITATIVE_DIMENSIONS.reduce((sum, d) => sum + (ratings[d] ?? QUAL_DEFAULT_RATING), 0) / QUALITATIVE_DIMENSIONS.length;
+  const scorecardWeightSum = QUALITATIVE_DIMENSIONS.reduce((sum, d) => sum + (weights.scorecardWeights[d] || 0), 0) || 1;
+  const qualAvg =
+    QUALITATIVE_DIMENSIONS.reduce((sum, d) => sum + (ratings[d] ?? QUAL_DEFAULT_RATING) * (weights.scorecardWeights[d] || 0), 0) /
+    scorecardWeightSum;
   const qual100 = (qualAvg / 5) * 100;
 
-  const talent100 = talentScore(talent);
+  const talent100 = talentScore(talent, weights.talentBands);
   const adversePenalty = 0; // no real adverse-event source yet
 
   const weightSum = Math.max(1, weights.qual + weights.talent);
