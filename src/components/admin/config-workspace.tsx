@@ -235,6 +235,19 @@ function newRuleId(): string {
 // in the enrichment data. A hard requirement the company does NOT meet
 // flags it as a weak / wrong-ICP match and subtracts from its ICP fit
 // score; a soft signal not met subtracts less.
+// Rotated across empty rows so "+ Add rule" doesn't always suggest the same
+// field — each example points at a different piece of data the LLM actually
+// sees (headcount, revenue, credit score, HQ location, legal history,
+// ownership), so users get a sense of the range of rules they can write.
+const FIT_RULE_EXAMPLES = [
+  "Company has more than 400 employees",
+  "Company's annual revenue exceeds $50 million",
+  "Company's credit rating is at least 70/100",
+  "Company is headquartered in the United States",
+  "Company has no active bankruptcy or lawsuits",
+  "Company is privately owned, not publicly traded",
+];
+
 function FitRuleEditor({
   value,
   onChange,
@@ -292,7 +305,7 @@ function FitRuleEditor({
                   value={rule.description}
                   disabled={disabled}
                   onChange={(e) => updateDescription(i, e.target.value)}
-                  placeholder="e.g. Company has more than 400 employees"
+                  placeholder={`e.g. ${FIT_RULE_EXAMPLES[i % FIT_RULE_EXAMPLES.length]}`}
                   className="h-8 flex-1 text-xs"
                 />
                 <Badge
