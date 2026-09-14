@@ -2,20 +2,22 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { AccountListItem } from "@/lib/data/accounts";
-import { statusMeta } from "@/components/accounts/status-meta";
+import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
-type SortKey = "name" | "status" | "revenue" | "updated";
+type SortKey = "name" | "revenue";
 
+const UNASSIGNED = "Unassigned";
 const PAGE_SIZE = 20;
 
 // First, last, current, and its neighbors — everything else collapses to an
@@ -46,25 +48,69 @@ function StatTile({ label, value, tone }: { label: string; value: number | strin
   );
 }
 
+// ---- Revenue filter ----
+
+type RevenueOp = "any" | "gt" | "lt" | "eq" | "between";
+
+const REVENUE_OP_LABELS: Record<RevenueOp, string> = {
+  any: "Any",
+  gt: "Greater than",
+  lt: "Less than",
+  eq: "Equal to",
+  between: "Between",
+};
+
 export function AccountsList({ accounts, onNavigate }: { accounts: AccountListItem[]; onNavigate: () => void }) {
   const router = useRouter();
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [selectedOwners, setSelectedOwners] = React.useState<Set<string>>(new Set());
+  const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
+  const [customStart, setCustomStart] = React.useState("");
+  const [customEnd, setCustomEnd] = React.useState("");
+  const [revenueOp, setRevenueOp] = React.useState<RevenueOp>("any");
+  const [revenueValue, setRevenueValue] = React.useState("");
+  const [revenueValue2, setRevenueValue2] = React.useState("");
   const [sortBy, setSortBy] = React.useState<SortKey>("name");
   const [page, setPage] = React.useState(1);
 
-  const statuses = React.useMemo(() => Array.from(new Set(accounts.map((a) => a.status))).sort(), [accounts]);
+  const ownerOptions = React.useMemo(() => {
+    const named = Array.from(new Set(accounts.map((a) => a.ownedBy).filter((o): o is string => !!o))).sort();
+    return accounts.some((a) => !a.ownedBy) ? [...named, UNASSIGNED] : named;
+  }, [accounts]);
 
   const withRevenue = accounts.filter((a) => a.totalRevenue !== null && a.totalRevenue > 0).length;
   const owners = new Set(accounts.map((a) => a.ownedBy).filter(Boolean)).size;
 
+  const dateRange = datePresetRange(datePreset, customStart, customEnd);
+  const revenueValueNum = Number(revenueValue);
+  const revenueValue2Num = Number(revenueValue2);
+
   const filtered = accounts
-    .filter((a) => statusFilter === "all" || a.status === statusFilter)
+    .filter((a) => selectedOwners.size === 0 || selectedOwners.has(a.ownedBy ?? UNASSIGNED))
+    .filter((a) => {
+      if (!dateRange.start && !dateRange.end) return true;
+      const t = new Date(a.updatedAt).getTime();
+      if (dateRange.start && t < new Date(`${dateRange.start}T00:00:00.000Z`).getTime()) return false;
+      if (dateRange.end && t > new Date(`${dateRange.end}T23:59:59.999Z`).getTime()) return false;
+      return true;
+    })
+    .filter((a) => {
+      if (revenueOp === "any") return true;
+      // Revenue not on file is neither "greater than" nor "less than" anything
+      // knowable — excluded from every operator rather than treated as $0.
+      if (a.totalRevenue === null) return false;
+      if (revenueOp === "gt") return Number.isFinite(revenueValueNum) ? a.totalRevenue > revenueValueNum : true;
+      if (revenueOp === "lt") return Number.isFinite(revenueValueNum) ? a.totalRevenue < revenueValueNum : true;
+      if (revenueOp === "eq") return Number.isFinite(revenueValueNum) ? a.totalRevenue === revenueValueNum : true;
+      // between
+      if (!Number.isFinite(revenueValueNum) || !Number.isFinite(revenueValue2Num)) return true;
+      const lo = Math.min(revenueValueNum, revenueValue2Num);
+      const hi = Math.max(revenueValueNum, revenueValue2Num);
+      return a.totalRevenue >= lo && a.totalRevenue <= hi;
+    })
     .filter((a) => a.companyName.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => {
-      if (sortBy === "status") return a.status.localeCompare(b.status);
       if (sortBy === "revenue") return (b.totalRevenue ?? -1) - (a.totalRevenue ?? -1);
-      if (sortBy === "updated") return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       return a.companyName.localeCompare(b.companyName);
     });
 
@@ -77,8 +123,23 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
     setPage(1);
   }
 
-  function updateStatusFilter(value: string) {
-    setStatusFilter(value);
+  function toggleOwner(owner: string) {
+    setSelectedOwners((prev) => {
+      const next = new Set(prev);
+      if (next.has(owner)) next.delete(owner);
+      else next.add(owner);
+      return next;
+    });
+    setPage(1);
+  }
+
+  function updateDatePreset(value: DatePreset) {
+    setDatePreset(value);
+    setPage(1);
+  }
+
+  function updateRevenueOp(value: RevenueOp) {
+    setRevenueOp(value);
     setPage(1);
   }
 
@@ -86,6 +147,9 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
     setSortBy(value);
     setPage(1);
   }
+
+  const dateActive = datePreset !== "all_time";
+  const revenueActive = revenueOp !== "any";
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,42 +180,156 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
               </Button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              onClick={() => updateStatusFilter("all")}
-              className={cn(
-                "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                statusFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
-              )}
-            >
-              All
-            </button>
-            {statuses.map((s) => {
-              const meta = statusMeta(s);
-              return (
-                <button
-                  key={s}
-                  onClick={() => updateStatusFilter(s)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                    statusFilter === s ? meta.badge : "bg-muted text-muted-foreground hover:text-foreground",
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("bg-card", selectedOwners.size > 0 && "border-primary/50 text-primary")}>
+                Owner{selectedOwners.size > 0 ? ` (${selectedOwners.size})` : ""}
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Owner</span>
+                {selectedOwners.size > 0 && (
+                  <button
+                    onClick={() => {
+                      setSelectedOwners(new Set());
+                      setPage(1);
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+                {ownerOptions.length === 0 && <p className="px-1.5 py-1 text-sm text-muted-foreground">No owners on file.</p>}
+                {ownerOptions.map((o) => (
+                  <label
+                    key={o}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-muted"
+                  >
+                    <Checkbox checked={selectedOwners.has(o)} onCheckedChange={() => toggleOwner(o)} />
+                    {o}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Select value={datePreset} onValueChange={(v) => updateDatePreset(v as DatePreset)}>
+            <SelectTrigger className={cn("w-40 bg-card", dateActive && "border-primary/50 text-primary")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DATE_PRESET_LABELS.map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {datePreset === "custom" && (
+            <>
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setPage(1);
+                }}
+                className="w-40 bg-card"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setPage(1);
+                }}
+                className="w-40 bg-card"
+              />
+            </>
+          )}
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("bg-card", revenueActive && "border-primary/50 text-primary")}>
+                Revenue{revenueActive ? ` ${REVENUE_OP_LABELS[revenueOp]}` : ""}
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Revenue</span>
+                {revenueActive && (
+                  <button
+                    onClick={() => {
+                      updateRevenueOp("any");
+                      setRevenueValue("");
+                      setRevenueValue2("");
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <Select value={revenueOp} onValueChange={(v) => updateRevenueOp(v as RevenueOp)}>
+                <SelectTrigger className="w-full bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(REVENUE_OP_LABELS) as [RevenueOp, string][]).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {revenueOp !== "any" && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="$"
+                    value={revenueValue}
+                    onChange={(e) => {
+                      setRevenueValue(e.target.value);
+                      setPage(1);
+                    }}
+                    className="bg-card"
+                  />
+                  {revenueOp === "between" && (
+                    <>
+                      <span className="text-sm text-muted-foreground">and</span>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="$"
+                        value={revenueValue2}
+                        onChange={(e) => {
+                          setRevenueValue2(e.target.value);
+                          setPage(1);
+                        }}
+                        className="bg-card"
+                      />
+                    </>
                   )}
-                >
-                  <span className={cn("size-1.5 rounded-full", meta.dot)} />
-                  {s}
-                </button>
-              );
-            })}
-          </div>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+
           <Select value={sortBy} onValueChange={(v) => updateSortBy(v as SortKey)}>
             <SelectTrigger className="w-40 bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="name">Sort: Name</SelectItem>
-              <SelectItem value="status">Sort: Status</SelectItem>
               <SelectItem value="revenue">Sort: Revenue</SelectItem>
-              <SelectItem value="updated">Sort: Recently updated</SelectItem>
             </SelectContent>
           </Select>
           <span className="ml-auto text-sm text-muted-foreground">
@@ -167,7 +345,6 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
               <TableHeader>
                 <TableRow>
                   <TableHead>Company</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead>Owner</TableHead>
                   <TableHead className="text-right">Revenue</TableHead>
                   <TableHead className="text-right">Updated</TableHead>
@@ -177,39 +354,31 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
               <TableBody>
                 {paged.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                       No accounts match your filters.
                     </TableCell>
                   </TableRow>
                 )}
-                {paged.map((a) => {
-                  const meta = statusMeta(a.status);
-                  return (
-                    <TableRow
-                      key={a.companyId}
-                      className="group cursor-pointer hover:bg-muted/50"
-                      onClick={() => {
-                        onNavigate();
-                        router.push(`/accounts?company=${a.companyId}`);
-                      }}
-                    >
-                      <TableCell className="font-medium">{a.companyName}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn("border-transparent", meta.badge)}>
-                          {a.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{a.ownedBy ?? "Unassigned"}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD")}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
-                      <TableCell>
-                        <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {paged.map((a) => (
+                  <TableRow
+                    key={a.companyId}
+                    className="group cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      onNavigate();
+                      router.push(`/accounts?company=${a.companyId}`);
+                    }}
+                  >
+                    <TableCell className="font-medium">{a.companyName}</TableCell>
+                    <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD")}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
+                    <TableCell>
+                      <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>

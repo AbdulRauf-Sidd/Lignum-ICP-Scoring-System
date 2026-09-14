@@ -14,8 +14,16 @@ import type { CurrencyAmount } from "@/lib/format";
 // duplicate status log, etc.) — 70 of 607 real event rows are exactly that.
 // Counting raw rows would inflate the metrics, so we count each person once
 // per activity within the company. Flip this if raw-event counting is ever
-// wanted instead — every metric below reads this one flag.
+// wanted instead — the CV metric below reads this one flag (first interviews
+// has its own fixed dedupe rule — see countFirstInterviews).
 const COUNT_DISTINCT_PERSONS = true;
+
+const CV_ACTIVITY_KEY = "submitted";
+// A candidate can be logged as reaching a first interview under either key —
+// they're two names for the same funnel stage in the source data (45 rows
+// use one, 154 the other, and a handful of (job_id, person_id) pairs have
+// both). Whichever fired, it should only count once per job+person.
+const FIRST_INTERVIEW_ACTIVITY_KEYS = ["moved_to_1st_stage_interviews", "client_interview"];
 
 // fee_type_id on active_accounts_placements: 1 = percentage of salary, 2 =
 // flat amount. (3 = hourly exists on fee_type but never appears on a real
@@ -41,14 +49,24 @@ export interface AccountMetrics {
 }
 
 interface EventRow {
+  job_id: number;
   person_id: number;
   activity_key: string;
 }
 
-function countActivity(rows: EventRow[], key: string): number {
-  const matching = rows.filter((r) => r.activity_key === key);
+function countCvs(rows: EventRow[]): number {
+  const matching = rows.filter((r) => r.activity_key === CV_ACTIVITY_KEY);
   if (COUNT_DISTINCT_PERSONS) return new Set(matching.map((r) => r.person_id)).size;
   return matching.length;
+}
+
+// Deduped by (job_id, person_id) rather than person_id alone — the two
+// qualifying activity keys aren't just duplicate-event noise, they can be a
+// real pair of separate events for the same super key, and only one should count.
+function countFirstInterviews(rows: EventRow[]): number {
+  const matching = rows.filter((r) => FIRST_INTERVIEW_ACTIVITY_KEYS.includes(r.activity_key));
+  const superKeys = new Set(matching.map((r) => `${r.job_id}:${r.person_id}`));
+  return superKeys.size;
 }
 
 interface PlacementRow {
@@ -90,12 +108,12 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   const [{ data: eventRows, error: eventsError }, { data: placementRows, error: placementsError }] = await Promise.all([
     supabase
       .from("active_accounts_jobs_candidates_events")
-      .select("person_id, activity_key")
+      .select("job_id, person_id, activity_key")
       .eq("company_id", companyId)
       .in("job_id", jobIds)
       .gte("created_at", startDate)
       .lte("created_at", endDate)
-      .in("activity_key", ["moved_to_cv_sent", "client_interview"]),
+      .in("activity_key", [CV_ACTIVITY_KEY, ...FIRST_INTERVIEW_ACTIVITY_KEYS]),
     supabase
       .from("active_accounts_placements")
       .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
@@ -137,8 +155,8 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   }
 
   return {
-    totalCvs: countActivity(rows, "moved_to_cv_sent"),
-    firstInterviews: countActivity(rows, "client_interview"),
+    totalCvs: countCvs(rows),
+    firstInterviews: countFirstInterviews(rows),
     totalPlacements: placements.length,
     revenue,
     revenueUsd,
