@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -232,24 +233,22 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
           </Select>
           {datePreset === "custom" && (
             <>
-              <Input
-                type="date"
+              <UkDateInput
                 value={customStart}
-                onChange={(e) => {
-                  setCustomStart(e.target.value);
+                onChange={(v) => {
+                  setCustomStart(v);
                   setPage(1);
                 }}
-                className="w-40 bg-card"
+                className="w-32 bg-card"
               />
               <span className="text-sm text-muted-foreground">to</span>
-              <Input
-                type="date"
+              <UkDateInput
                 value={customEnd}
-                onChange={(e) => {
-                  setCustomEnd(e.target.value);
+                onChange={(v) => {
+                  setCustomEnd(v);
                   setPage(1);
                 }}
-                className="w-40 bg-card"
+                className="w-32 bg-card"
               />
             </>
           )}
