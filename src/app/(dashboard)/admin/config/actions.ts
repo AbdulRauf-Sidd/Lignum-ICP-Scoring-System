@@ -94,6 +94,14 @@ export interface ModelSettingsInput {
   health_weight_qualitative: number;
   health_weight_talent: number;
   health_weight_adverse: number;
+  health_weight_relationship_strength: number;
+  health_weight_delivery_satisfaction: number;
+  health_weight_growth_potential: number;
+  health_weight_payment_reliability: number;
+  health_weight_strategic_fit: number;
+  headcount_change_bands: string;
+  attrition_bands: string;
+  tenure_bands: string;
   review_reminder_days: number;
 }
 
@@ -107,6 +115,15 @@ export async function saveModelSettings(input: ModelSettingsInput) {
   const healthSum = input.health_weight_qualitative + input.health_weight_talent + input.health_weight_adverse;
   if (healthSum !== 100) {
     throw new Error(`Account health weights must sum to 100 (currently ${healthSum}).`);
+  }
+  const scorecardSum =
+    input.health_weight_relationship_strength +
+    input.health_weight_delivery_satisfaction +
+    input.health_weight_growth_potential +
+    input.health_weight_payment_reliability +
+    input.health_weight_strategic_fit;
+  if (scorecardSum !== 100) {
+    throw new Error(`Client scorecard weights must sum to 100 (currently ${scorecardSum}).`);
   }
 
   const supabase = getSupabaseServerClient();

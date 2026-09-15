@@ -48,6 +48,32 @@ const WEIGHT_COLORS: Record<WeightKey, string> = {
   weight_financial_viability: "#8b5cf6",
 };
 
+const SCORECARD_WEIGHT_KEYS = [
+  "health_weight_relationship_strength",
+  "health_weight_delivery_satisfaction",
+  "health_weight_growth_potential",
+  "health_weight_payment_reliability",
+  "health_weight_strategic_fit",
+] as const;
+
+type ScorecardWeightKey = (typeof SCORECARD_WEIGHT_KEYS)[number];
+
+const SCORECARD_WEIGHT_LABELS: Record<ScorecardWeightKey, string> = {
+  health_weight_relationship_strength: "Relationship strength",
+  health_weight_delivery_satisfaction: "Delivery satisfaction",
+  health_weight_growth_potential: "Growth potential",
+  health_weight_payment_reliability: "Payment reliability",
+  health_weight_strategic_fit: "Strategic fit",
+};
+
+const SCORECARD_WEIGHT_COLORS: Record<ScorecardWeightKey, string> = {
+  health_weight_relationship_strength: "var(--primary)",
+  health_weight_delivery_satisfaction: "#10b981",
+  health_weight_growth_potential: "#0ea5e9",
+  health_weight_payment_reliability: "#8b5cf6",
+  health_weight_strategic_fit: "#f59e0b",
+};
+
 type Draft = Omit<IcpProfileRow, "id"> & { id: string | null; clientKey: string };
 
 function rowToDraft(row: IcpProfileRow): Draft {
@@ -91,8 +117,15 @@ function parseBands(json: string): Band[] | null {
   }
 }
 
-function formatBandLabel(band: Band, index: number, arr: Band[], kind: "currency" | "number"): string {
-  const fmt = (n: number) => (kind === "currency" ? formatUsdCompact(n) : formatNumber(n));
+type BandKind = "currency" | "number" | "percent" | "years";
+
+function formatBandLabel(band: Band, index: number, arr: Band[], kind: BandKind): string {
+  const fmt = (n: number) => {
+    if (kind === "currency") return formatUsdCompact(n);
+    if (kind === "percent") return `${formatNumber(n)}%`;
+    if (kind === "years") return `${formatNumber(n)} yrs`;
+    return formatNumber(n);
+  };
   if (index === arr.length - 1 && band.max >= 1_000_000_000) return `${fmt(band.min)} and above`;
   if (index === 0 && band.min === 0) return `Below ${fmt(band.max)}`;
   return `${fmt(band.min)} – ${fmt(band.max)}`;
@@ -111,7 +144,7 @@ function BandEditor({
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
-  kind: "currency" | "number";
+  kind: BandKind;
 }) {
   const bands = parseBands(value);
 
@@ -235,6 +268,19 @@ function newRuleId(): string {
 // in the enrichment data. A hard requirement the company does NOT meet
 // flags it as a weak / wrong-ICP match and subtracts from its ICP fit
 // score; a soft signal not met subtracts less.
+// Rotated across empty rows so "+ Add rule" doesn't always suggest the same
+// field — each example points at a different piece of data the LLM actually
+// sees (headcount, revenue, credit score, HQ location, legal history,
+// ownership), so users get a sense of the range of rules they can write.
+const FIT_RULE_EXAMPLES = [
+  "Company has more than 400 employees",
+  "Company's annual revenue exceeds $50 million",
+  "Company's credit rating is at least 70/100",
+  "Company is headquartered in the United States",
+  "Company has no active bankruptcy or lawsuits",
+  "Company is privately owned, not publicly traded",
+];
+
 function FitRuleEditor({
   value,
   onChange,
@@ -292,7 +338,7 @@ function FitRuleEditor({
                   value={rule.description}
                   disabled={disabled}
                   onChange={(e) => updateDescription(i, e.target.value)}
-                  placeholder="e.g. Company has more than 400 employees"
+                  placeholder={`e.g. ${FIT_RULE_EXAMPLES[i % FIT_RULE_EXAMPLES.length]}`}
                   className="h-8 flex-1 text-xs"
                 />
                 <Badge
@@ -340,6 +386,14 @@ function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
     health_weight_qualitative: row.health_weight_qualitative,
     health_weight_talent: row.health_weight_talent,
     health_weight_adverse: row.health_weight_adverse,
+    health_weight_relationship_strength: row.health_weight_relationship_strength,
+    health_weight_delivery_satisfaction: row.health_weight_delivery_satisfaction,
+    health_weight_growth_potential: row.health_weight_growth_potential,
+    health_weight_payment_reliability: row.health_weight_payment_reliability,
+    health_weight_strategic_fit: row.health_weight_strategic_fit,
+    headcount_change_bands: row.headcount_change_bands,
+    attrition_bands: row.attrition_bands,
+    tenure_bands: row.tenure_bands,
     review_reminder_days: row.review_reminder_days,
   };
 }
@@ -531,6 +585,8 @@ export function ConfigWorkspace({
   const healthWeightSum =
     settingsDraft.health_weight_qualitative + settingsDraft.health_weight_talent + settingsDraft.health_weight_adverse;
 
+  const scorecardWeightSum = SCORECARD_WEIGHT_KEYS.reduce((sum, k) => sum + (settingsDraft[k] || 0), 0);
+
   const settingsDirty = JSON.stringify(settingsDraft) !== JSON.stringify(toSettingsInput(syncedSettings));
 
   async function saveSettings(): Promise<boolean> {
@@ -544,6 +600,10 @@ export function ConfigWorkspace({
     }
     if (healthWeightSum !== 100) {
       toast.error("Account health weights must sum to 100", { description: `Currently ${healthWeightSum}.` });
+      return false;
+    }
+    if (scorecardWeightSum !== 100) {
+      toast.error("Client scorecard weights must sum to 100", { description: `Currently ${scorecardWeightSum}.` });
       return false;
     }
     setSavingSettings(true);
@@ -939,6 +999,157 @@ export function ConfigWorkspace({
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between">
+              <div>
+                <CardTitle>Account health weights</CardTitle>
+                <CardDescription>
+                  How the Client scorecard, Talent insights and Adverse events combine into the Account Health
+                  score shown on each account.
+                </CardDescription>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "gap-1 border-transparent shrink-0",
+                  healthWeightSum === 100 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
+                )}
+              >
+                {healthWeightSum === 100 ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+                Total {healthWeightSum} / 100
+              </Badge>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {(
+                [
+                  ["health_weight_qualitative", "Client scorecard", "var(--primary)"],
+                  ["health_weight_talent", "Talent insights", "#10b981"],
+                  ["health_weight_adverse", "Adverse events", "#ef4444"],
+                ] as const
+              ).map(([key, label, color]) => (
+                <div key={key} className="flex items-center gap-3">
+                  <span className="h-2.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+                  <Label className="w-44 shrink-0 text-sm font-normal">{label}</Label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) })}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-current"
+                    style={{ color }}
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) })}
+                    className="h-8 w-16 shrink-0 tabular-nums"
+                  />
+                  <span className="w-3 shrink-0 text-xs text-muted-foreground">%</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between">
+              <div>
+                <CardTitle>Client scorecard weights</CardTitle>
+                <CardDescription>How the 5 scorecard ratings combine into the Client scorecard sub-score.</CardDescription>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "gap-1 border-transparent shrink-0",
+                  scorecardWeightSum === 100 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive",
+                )}
+              >
+                {scorecardWeightSum === 100 ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+                Total {scorecardWeightSum} / 100
+              </Badge>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {SCORECARD_WEIGHT_KEYS.map((key) => (
+                <div key={key} className="flex items-center gap-3">
+                  <span className="h-2.5 w-1.5 shrink-0 rounded-full" style={{ background: SCORECARD_WEIGHT_COLORS[key] }} />
+                  <Label className="w-44 shrink-0 text-sm font-normal">{SCORECARD_WEIGHT_LABELS[key]}</Label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) })}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-current"
+                    style={{ color: SCORECARD_WEIGHT_COLORS[key] }}
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={settingsDraft[key]}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ [key]: Number(e.target.value) })}
+                    className="h-8 w-16 shrink-0 tabular-nums"
+                  />
+                  <span className="w-3 shrink-0 text-xs text-muted-foreground">%</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Headcount change band → score</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BandEditor
+                  label="Headcount change bands (%)"
+                  hint="Trailing headcount change mapped to a Talent insights sub-score."
+                  value={settingsDraft.headcount_change_bands}
+                  onChange={(v) => updateSettings({ headcount_change_bands: v })}
+                  disabled={savingSettings}
+                  kind="percent"
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Attrition band → score</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BandEditor
+                  label="Attrition bands (%)"
+                  hint="Trailing attrition rate mapped to a Talent insights sub-score."
+                  value={settingsDraft.attrition_bands}
+                  onChange={(v) => updateSettings({ attrition_bands: v })}
+                  disabled={savingSettings}
+                  kind="percent"
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Average tenure band → score</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BandEditor
+                  label="Average tenure bands (years)"
+                  hint="Average employee tenure mapped to a Talent insights sub-score."
+                  value={settingsDraft.tenure_bands}
+                  onChange={(v) => updateSettings({ tenure_bands: v })}
+                  disabled={savingSettings}
+                  kind="years"
+                />
+              </CardContent>
+            </Card>
+          </div>
 
           <Card>
             <CardHeader>

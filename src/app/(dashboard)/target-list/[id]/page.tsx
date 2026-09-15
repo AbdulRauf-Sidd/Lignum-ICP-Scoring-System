@@ -138,7 +138,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                       <TableCell>Headcount</TableCell>
                       <TableCell>{formatNumber(company.headcount)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">cognism</Badge>
+                        <Badge variant="outline">creditsafe</Badge>
                       </TableCell>
                     </TableRow>
                     <TableRow>
@@ -152,8 +152,8 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                 </Table>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Source shown is whichever provider the pipeline prefers by default (Creditsafe for revenue, Cognism
-                for headcount) — it doesn&apos;t yet reflect which one actually supplied this specific value when a
+                Source shown is whichever provider the pipeline prefers by default (Creditsafe for revenue and
+                headcount) — it doesn&apos;t yet reflect which one actually supplied this specific value when a
                 fallback was used. The full per-field source breakdown (from `enrichment_data`) isn&apos;t wired up
                 here yet either.
               </p>

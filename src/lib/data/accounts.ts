@@ -197,33 +197,108 @@ export async function getTalentInsights(companyId: number): Promise<TalentInsigh
   };
 }
 
+// Same {min, max, score} shape as the band columns on icp_profiles.
+export interface Band {
+  min: number;
+  max: number;
+  score: number;
+}
+
+export type ScorecardWeights = Record<QualitativeMetric, number>;
+
+export interface TalentBands {
+  headcountChange: Band[];
+  attrition: Band[];
+  avgTenure: Band[];
+}
+
 export interface HealthWeights {
   qual: number;
   talent: number;
   adverse: number;
+  // Per-dimension weights for the Client Scorecard (sum to 100) -- replaces
+  // the old equal-weight average across the 5 ratings.
+  scorecardWeights: ScorecardWeights;
+  // Band tables converting each Talent Insights metric into a 0-100
+  // sub-score -- replaces the old hardcoded formula.
+  talentBands: TalentBands;
 }
+
+export const DEFAULT_HEALTH_WEIGHTS: HealthWeights = {
+  qual: 50,
+  talent: 30,
+  adverse: 20,
+  scorecardWeights: {
+    relationship_strength: 20,
+    delivery_satisfaction: 20,
+    growth_potential: 20,
+    payment_reliability: 20,
+    strategic_fit: 20,
+  },
+  talentBands: { headcountChange: [], attrition: [], avgTenure: [] },
+};
 
 interface HealthWeightsRow {
   health_weight_qualitative: number;
   health_weight_talent: number;
   health_weight_adverse: number;
+  health_weight_relationship_strength: number;
+  health_weight_delivery_satisfaction: number;
+  health_weight_growth_potential: number;
+  health_weight_payment_reliability: number;
+  health_weight_strategic_fit: number;
+  headcount_change_bands: string;
+  attrition_bands: string;
+  tenure_bands: string;
+}
+
+// Malformed band JSON (e.g. mid-edit as raw text in Model config) falls back
+// to an empty band list rather than throwing -- computeAccountHealth already
+// treats "no matching band" as neutral, so this degrades gracefully.
+function parseBands(json: string | null | undefined): Band[] {
+  if (!json) return [];
+  try {
+    const val = JSON.parse(json);
+    if (!Array.isArray(val)) return [];
+    return val.filter(
+      (b): b is Band => b && typeof b === "object" && typeof b.min === "number" && typeof b.max === "number" && typeof b.score === "number",
+    );
+  } catch {
+    return [];
+  }
 }
 
 export async function getHealthWeights(): Promise<HealthWeights> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("model_settings")
-    .select("health_weight_qualitative, health_weight_talent, health_weight_adverse")
+    .select(
+      "health_weight_qualitative, health_weight_talent, health_weight_adverse, health_weight_relationship_strength, health_weight_delivery_satisfaction, health_weight_growth_potential, health_weight_payment_reliability, health_weight_strategic_fit, headcount_change_bands, attrition_bands, tenure_bands",
+    )
     .eq("id", "global")
     .maybeSingle();
 
   if (error) throw new Error(`Failed to load model_settings: ${error.message}`);
 
   const r = data as HealthWeightsRow | null;
+  if (!r) return DEFAULT_HEALTH_WEIGHTS;
+
   return {
-    qual: r?.health_weight_qualitative ?? 50,
-    talent: r?.health_weight_talent ?? 30,
-    adverse: r?.health_weight_adverse ?? 20,
+    qual: r.health_weight_qualitative ?? DEFAULT_HEALTH_WEIGHTS.qual,
+    talent: r.health_weight_talent ?? DEFAULT_HEALTH_WEIGHTS.talent,
+    adverse: r.health_weight_adverse ?? DEFAULT_HEALTH_WEIGHTS.adverse,
+    scorecardWeights: {
+      relationship_strength: r.health_weight_relationship_strength ?? DEFAULT_HEALTH_WEIGHTS.scorecardWeights.relationship_strength,
+      delivery_satisfaction: r.health_weight_delivery_satisfaction ?? DEFAULT_HEALTH_WEIGHTS.scorecardWeights.delivery_satisfaction,
+      growth_potential: r.health_weight_growth_potential ?? DEFAULT_HEALTH_WEIGHTS.scorecardWeights.growth_potential,
+      payment_reliability: r.health_weight_payment_reliability ?? DEFAULT_HEALTH_WEIGHTS.scorecardWeights.payment_reliability,
+      strategic_fit: r.health_weight_strategic_fit ?? DEFAULT_HEALTH_WEIGHTS.scorecardWeights.strategic_fit,
+    },
+    talentBands: {
+      headcountChange: parseBands(r.headcount_change_bands),
+      attrition: parseBands(r.attrition_bands),
+      avgTenure: parseBands(r.tenure_bands),
+    },
   };
 }
 
