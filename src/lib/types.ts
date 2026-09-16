@@ -24,7 +24,7 @@ export type MatchFlag = "match" | "weak" | "no_match";
 export type FieldSource = "creditsafe" | "cognism";
 
 export interface ScoreCategory {
-  key: "icp_fit" | "scale_footprint" | "hiring_growth" | "financial_viability";
+  key: "icp_fit" | "scale_footprint" | "hiring_growth" | "financial_viability" | "credit_risk";
   label: string;
   subScore: number | null;
   weight: number;
@@ -69,8 +69,14 @@ export interface Company {
   confidence: number | null;
   scoringBreakdown: ScoreCategory[];
   revenueUsd: number | null;
+  revenueSource: FieldSource | null;
   headcount: number | null;
+  headcountSource: FieldSource | null;
   hiringEventCount: number | null;
+  // Creditsafe's "Company Recommendation" score, feeding the credit_risk
+  // scoring category. creditLimit is display-only, never scored.
+  creditsafeRiskScore: number | null;
+  creditsafeCreditLimit: number | null;
   country: string;
   importedBy: string;
   importedAt: string;

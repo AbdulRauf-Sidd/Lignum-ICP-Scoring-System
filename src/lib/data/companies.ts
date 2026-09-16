@@ -1,6 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
-import type { Company, ScoreCategory, CandidateEntity, CompanyStatus, Tier, MatchFlag, TriageReason } from "@/lib/types";
+import type { Company, ScoreCategory, CandidateEntity, CompanyStatus, Tier, MatchFlag, TriageReason, FieldSource } from "@/lib/types";
 
 // Mirrors the real `companies` table — see the n8n workflow's Supabase nodes
 // for the source of truth on these column names.
@@ -30,8 +30,12 @@ interface CompanyRow {
   creditsafe_match_strategy: string | null;
   last_error: string | null;
   revenue_usd: number | null;
+  revenue_source: FieldSource | null;
   headcount: number | null;
+  headcount_source: FieldSource | null;
   hiring_event_count: number | null;
+  creditsafe_risk_score: number | null;
+  creditsafe_credit_limit: number | null;
 }
 
 // Mirrors the real `scoring_breakdown` table.
@@ -43,6 +47,7 @@ interface ScoringBreakdownRow {
   score_scale_footprint: number | null;
   score_hiring_growth: number | null;
   score_financial_viability: number | null;
+  score_credit_risk: number | null;
   weights_used: string; // JSON string, e.g. {"icp_fit": 37.5, ...}
   excluded_categories: string[];
   total_score: number;
@@ -51,7 +56,7 @@ interface ScoringBreakdownRow {
   created_at: string;
 }
 
-const CATEGORY_KEYS = ["icp_fit", "scale_footprint", "hiring_growth", "financial_viability"] as const;
+const CATEGORY_KEYS = ["icp_fit", "scale_footprint", "hiring_growth", "financial_viability", "credit_risk"] as const;
 
 function buildScoringBreakdown(row: ScoringBreakdownRow): ScoreCategory[] {
   let weights: Record<string, number> = {};
@@ -66,6 +71,7 @@ function buildScoringBreakdown(row: ScoringBreakdownRow): ScoreCategory[] {
     scale_footprint: row.score_scale_footprint,
     hiring_growth: row.score_hiring_growth,
     financial_viability: row.score_financial_viability,
+    credit_risk: row.score_credit_risk,
   };
 
   return CATEGORY_KEYS.map((key) => {
@@ -110,8 +116,12 @@ function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | nu
     confidence: row.classification_confidence,
     scoringBreakdown,
     revenueUsd: row.revenue_usd,
+    revenueSource: row.revenue_source,
     headcount: row.headcount,
+    headcountSource: row.headcount_source,
     hiringEventCount: row.hiring_event_count,
+    creditsafeRiskScore: row.creditsafe_risk_score,
+    creditsafeCreditLimit: row.creditsafe_credit_limit,
     country: "",
     importedBy: row.imported_by ?? "—",
     importedAt: row.created_at,

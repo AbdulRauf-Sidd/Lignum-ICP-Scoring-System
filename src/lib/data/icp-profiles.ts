@@ -10,10 +10,12 @@ export interface IcpProfileRow {
   weight_scale_footprint: number;
   weight_hiring_growth: number;
   weight_financial_viability: number;
+  weight_credit_risk: number;
   target_sectors: string[];
   revenue_bands_usd: string;
   headcount_bands: string;
   hiring_growth_bands: string;
+  credit_risk_bands: string;
   fit_rules: string;
 }
 

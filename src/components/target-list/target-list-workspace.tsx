@@ -175,7 +175,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
     setPage(1);
   }
 
-  const columnCount = view === "scorecard" ? 14 : 13;
+  const columnCount = view === "scorecard" ? 15 : 13;
 
   return (
     <div>
@@ -399,6 +399,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
                   <TableHead>Scale</TableHead>
                   <TableHead>Hiring</TableHead>
                   <TableHead>Financial</TableHead>
+                  <TableHead>Credit risk</TableHead>
                 </>
               ) : (
                 <>
@@ -498,6 +499,18 @@ function StatTile({
   );
 }
 
+function FallbackMarker() {
+  return (
+    <Badge
+      variant="outline"
+      className="ml-1.5 border-transparent bg-muted px-1 py-0 text-[9px] font-normal text-muted-foreground"
+      title="Cognism had no value for this company — sourced from Creditsafe instead."
+    >
+      CS
+    </Badge>
+  );
+}
+
 function CategoryMeter({ category }: { category: Company["scoringBreakdown"][number] | undefined }) {
   if (!category || category.excluded || category.subScore === null) {
     return <span className="text-sm text-muted-foreground">—</span>;
@@ -579,11 +592,20 @@ function TargetListRow({
           <TableCell>
             <CategoryMeter category={byKey.get("financial_viability")} />
           </TableCell>
+          <TableCell>
+            <CategoryMeter category={byKey.get("credit_risk")} />
+          </TableCell>
         </>
       ) : (
         <>
-          <TableCell className="tabular-nums text-muted-foreground">{formatUsdCompact(company.revenueUsd)}</TableCell>
-          <TableCell className="tabular-nums text-muted-foreground">{formatNumber(company.headcount)}</TableCell>
+          <TableCell className="tabular-nums text-muted-foreground">
+            {formatUsdCompact(company.revenueUsd)}
+            {company.revenueSource === "creditsafe" && <FallbackMarker />}
+          </TableCell>
+          <TableCell className="tabular-nums text-muted-foreground">
+            {formatNumber(company.headcount)}
+            {company.headcountSource === "creditsafe" && <FallbackMarker />}
+          </TableCell>
         </>
       )}
       <TableCell className="tabular-nums">{company.confidence}%</TableCell>

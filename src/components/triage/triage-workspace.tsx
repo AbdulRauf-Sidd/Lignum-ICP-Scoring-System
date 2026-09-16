@@ -378,7 +378,19 @@ function TriageCard({
                 </Badge>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {formatUsdCompact(company.revenueUsd)} rev · {formatNumber(company.headcount)} staff
+                {formatUsdCompact(company.revenueUsd)} rev
+                {company.revenueSource === "creditsafe" && (
+                  <span className="ml-1 text-[10px] text-muted-foreground/70" title="Sourced from Creditsafe fallback">
+                    (CS)
+                  </span>
+                )}
+                {" · "}
+                {formatNumber(company.headcount)} staff
+                {company.headcountSource === "creditsafe" && (
+                  <span className="ml-1 text-[10px] text-muted-foreground/70" title="Sourced from Creditsafe fallback">
+                    (CS)
+                  </span>
+                )}
                 {company.country ? ` · ${company.country}` : ""}
               </p>
             </div>

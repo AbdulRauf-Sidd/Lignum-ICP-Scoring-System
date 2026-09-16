@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import type { FieldSource } from "@/lib/types";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -309,13 +310,19 @@ export async function getHealthWeights(): Promise<HealthWeights> {
 // both tables are normalized to a bare hostname before comparing.
 export interface AccountFirmographics {
   revenueUsd: number | null;
+  revenueSource: FieldSource | null;
   headcount: number | null;
+  headcountSource: FieldSource | null;
   creditRating: number | null;
   hasBankruptcy: boolean | null;
   hasActiveLawsuit: boolean | null;
   foundedYear: number | null;
   hq: string | null;
   numberOfSites: number | null;
+  // Creditsafe's "Company Recommendation" credit limit — reference only for
+  // BD, never used in scoring (that's creditsafeRiskScore, driving the
+  // credit_risk ICP category instead).
+  creditLimit: number | null;
   // Legal entity type (e.g. "Corporation", "Limited Liability"), not true
   // ownership structure — this dataset has no parent/subsidiary/shareholder
   // data anywhere, so this is the closest honest stand-in.
@@ -334,7 +341,9 @@ function extractDomain(url: string | null): string | null {
 
 interface FirmographicsRow {
   revenue_usd: number | null;
+  revenue_source: FieldSource | null;
   headcount: number | null;
+  headcount_source: FieldSource | null;
   credit_rating: number | null;
   has_bankruptcy: boolean | null;
   has_active_lawsuit: boolean | null;
@@ -342,6 +351,7 @@ interface FirmographicsRow {
   headquarters: string | null;
   number_of_sites: number | null;
   ownership: string | null;
+  creditsafe_credit_limit: number | null;
 }
 
 // Null return means "not yet enriched" — no usable domain on the account,
@@ -358,7 +368,7 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
   const { data, error } = await supabase
     .from("companies")
     .select(
-      "revenue_usd, headcount, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership",
+      "revenue_usd, revenue_source, headcount, headcount_source, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership, creditsafe_credit_limit",
     )
     .in("domain", [domain, `www.${domain}`])
     .order("last_enriched_at", { ascending: false, nullsFirst: false })
@@ -372,7 +382,9 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
 
   return {
     revenueUsd: r.revenue_usd,
+    revenueSource: r.revenue_source,
     headcount: r.headcount,
+    headcountSource: r.headcount_source,
     creditRating: r.credit_rating,
     hasBankruptcy: r.has_bankruptcy,
     hasActiveLawsuit: r.has_active_lawsuit,
@@ -380,6 +392,7 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
     foundedYear: r.founded_year,
     hq: r.headquarters,
     numberOfSites: r.number_of_sites,
+    creditLimit: r.creditsafe_credit_limit,
   };
 }
 

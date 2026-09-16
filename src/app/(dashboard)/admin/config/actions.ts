@@ -10,10 +10,12 @@ export interface IcpProfileInput {
   weight_scale_footprint: number;
   weight_hiring_growth: number;
   weight_financial_viability: number;
+  weight_credit_risk: number;
   target_sectors: string[];
   revenue_bands_usd: string;
   headcount_bands: string;
   hiring_growth_bands: string;
+  credit_risk_bands: string;
   fit_rules: string;
 }
 
@@ -27,7 +29,11 @@ function assertValidJson(label: string, value: string) {
 
 export async function saveIcpProfile(input: IcpProfileInput): Promise<{ id: string }> {
   const weightSum =
-    input.weight_icp_fit + input.weight_scale_footprint + input.weight_hiring_growth + input.weight_financial_viability;
+    input.weight_icp_fit +
+    input.weight_scale_footprint +
+    input.weight_hiring_growth +
+    input.weight_financial_viability +
+    input.weight_credit_risk;
   if (weightSum !== 100) {
     throw new Error(`Weights must sum to 100 (currently ${weightSum}).`);
   }
@@ -37,6 +43,7 @@ export async function saveIcpProfile(input: IcpProfileInput): Promise<{ id: stri
   assertValidJson("Revenue bands", input.revenue_bands_usd);
   assertValidJson("Headcount bands", input.headcount_bands);
   assertValidJson("Hiring & growth bands", input.hiring_growth_bands);
+  assertValidJson("Credit risk bands", input.credit_risk_bands);
   assertValidJson("Fit rules", input.fit_rules);
 
   const supabase = getSupabaseServerClient();
@@ -46,10 +53,12 @@ export async function saveIcpProfile(input: IcpProfileInput): Promise<{ id: stri
     weight_scale_footprint: input.weight_scale_footprint,
     weight_hiring_growth: input.weight_hiring_growth,
     weight_financial_viability: input.weight_financial_viability,
+    weight_credit_risk: input.weight_credit_risk,
     target_sectors: input.target_sectors,
     revenue_bands_usd: input.revenue_bands_usd,
     headcount_bands: input.headcount_bands,
     hiring_growth_bands: input.hiring_growth_bands,
+    credit_risk_bands: input.credit_risk_bands,
     fit_rules: input.fit_rules,
   };
 

@@ -30,6 +30,7 @@ const WEIGHT_KEYS = [
   "weight_scale_footprint",
   "weight_hiring_growth",
   "weight_financial_viability",
+  "weight_credit_risk",
 ] as const;
 
 type WeightKey = (typeof WEIGHT_KEYS)[number];
@@ -39,6 +40,7 @@ const CATEGORY_LABEL_BY_WEIGHT_KEY: Record<WeightKey, string> = {
   weight_scale_footprint: SCORE_CATEGORY_LABELS.scale_footprint,
   weight_hiring_growth: SCORE_CATEGORY_LABELS.hiring_growth,
   weight_financial_viability: SCORE_CATEGORY_LABELS.financial_viability,
+  weight_credit_risk: SCORE_CATEGORY_LABELS.credit_risk,
 };
 
 const WEIGHT_COLORS: Record<WeightKey, string> = {
@@ -46,6 +48,7 @@ const WEIGHT_COLORS: Record<WeightKey, string> = {
   weight_scale_footprint: "#10b981",
   weight_hiring_growth: "#0ea5e9",
   weight_financial_viability: "#8b5cf6",
+  weight_credit_risk: "#ef4444",
 };
 
 const SCORECARD_WEIGHT_KEYS = [
@@ -86,14 +89,16 @@ function blankDraft(): Draft {
     id: null,
     clientKey,
     icp_name: "New ICP",
-    weight_icp_fit: 25,
-    weight_scale_footprint: 25,
-    weight_hiring_growth: 25,
-    weight_financial_viability: 25,
+    weight_icp_fit: 20,
+    weight_scale_footprint: 20,
+    weight_hiring_growth: 20,
+    weight_financial_viability: 20,
+    weight_credit_risk: 20,
     target_sectors: [],
     revenue_bands_usd: "[]",
     headcount_bands: "[]",
     hiring_growth_bands: "[]",
+    credit_risk_bands: "[]",
     fit_rules: "[]",
   };
 }
@@ -422,10 +427,12 @@ export function ConfigWorkspace({
       a.weight_scale_footprint === b.weight_scale_footprint &&
       a.weight_hiring_growth === b.weight_hiring_growth &&
       a.weight_financial_viability === b.weight_financial_viability &&
+      a.weight_credit_risk === b.weight_credit_risk &&
       JSON.stringify(a.target_sectors) === JSON.stringify(b.target_sectors) &&
       a.revenue_bands_usd === b.revenue_bands_usd &&
       a.headcount_bands === b.headcount_bands &&
       a.hiring_growth_bands === b.hiring_growth_bands &&
+      a.credit_risk_bands === b.credit_risk_bands &&
       a.fit_rules === b.fit_rules
     );
   }
@@ -499,6 +506,7 @@ export function ConfigWorkspace({
       ["Revenue bands", draft.revenue_bands_usd],
       ["Headcount bands", draft.headcount_bands],
       ["Hiring & growth bands", draft.hiring_growth_bands],
+      ["Credit risk bands", draft.credit_risk_bands],
       ["Fit rules", draft.fit_rules],
     ] as const) {
       if (!jsonIsValid(value)) {
@@ -516,10 +524,12 @@ export function ConfigWorkspace({
         weight_scale_footprint: draft.weight_scale_footprint,
         weight_hiring_growth: draft.weight_hiring_growth,
         weight_financial_viability: draft.weight_financial_viability,
+        weight_credit_risk: draft.weight_credit_risk,
         target_sectors: draft.target_sectors,
         revenue_bands_usd: draft.revenue_bands_usd,
         headcount_bands: draft.headcount_bands,
         hiring_growth_bands: draft.hiring_growth_bands,
+        credit_risk_bands: draft.credit_risk_bands,
         fit_rules: draft.fit_rules,
       });
       toast.success(`${draft.icp_name} saved`, { description: "Applies on next score or re-score." });
@@ -536,10 +546,12 @@ export function ConfigWorkspace({
         weight_scale_footprint: draft.weight_scale_footprint,
         weight_hiring_growth: draft.weight_hiring_growth,
         weight_financial_viability: draft.weight_financial_viability,
+        weight_credit_risk: draft.weight_credit_risk,
         target_sectors: draft.target_sectors,
         revenue_bands_usd: draft.revenue_bands_usd,
         headcount_bands: draft.headcount_bands,
         hiring_growth_bands: draft.hiring_growth_bands,
+        credit_risk_bands: draft.credit_risk_bands,
         fit_rules: draft.fit_rules,
       };
       setSyncedProfiles((prev) => (prev.some((p) => p.id === id) ? prev.map((p) => (p.id === id ? savedRow : p)) : [...prev, savedRow]));
@@ -732,7 +744,7 @@ export function ConfigWorkspace({
                       <CardHeader className="flex-row items-start justify-between">
                         <div>
                           <CardTitle>Category weights · {d.icp_name || "Untitled"}</CardTitle>
-                          <CardDescription>How the four scoring categories combine into a total score.</CardDescription>
+                          <CardDescription>How the five scoring categories combine into a total score.</CardDescription>
                         </div>
                         <Badge variant="outline" className={cn("gap-1 border-transparent shrink-0", valid ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-destructive/10 text-destructive")}>
                           {valid ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
@@ -777,7 +789,7 @@ export function ConfigWorkspace({
                       </CardContent>
                     </Card>
 
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-4">
                       <Card>
                         <CardHeader>
                           <CardTitle>Revenue band → score</CardTitle>
@@ -818,6 +830,21 @@ export function ConfigWorkspace({
                             hint="Recent hiring-event count (last 180 days) mapped to a hiring & growth sub-score."
                             value={d.hiring_growth_bands}
                             onChange={(v) => updateDraft(d.clientKey, { hiring_growth_bands: v })}
+                            disabled={isPending}
+                            kind="number"
+                          />
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Credit risk band → score</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <BandEditor
+                            label="Credit risk bands"
+                            hint="Creditsafe's risk score (0-100) mapped to a credit risk sub-score."
+                            value={d.credit_risk_bands}
+                            onChange={(v) => updateDraft(d.clientKey, { credit_risk_bands: v })}
                             disabled={isPending}
                             kind="number"
                           />

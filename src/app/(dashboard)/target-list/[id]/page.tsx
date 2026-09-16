@@ -131,14 +131,14 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                       <TableCell>Annual revenue</TableCell>
                       <TableCell>{formatUsdCompact(company.revenueUsd)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">creditsafe</Badge>
+                        <Badge variant="outline">{company.revenueSource ?? "—"}</Badge>
                       </TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>Headcount</TableCell>
                       <TableCell>{formatNumber(company.headcount)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">creditsafe</Badge>
+                        <Badge variant="outline">{company.headcountSource ?? "—"}</Badge>
                       </TableCell>
                     </TableRow>
                     <TableRow>
@@ -148,14 +148,28 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                         <Badge variant="outline">cognism</Badge>
                       </TableCell>
                     </TableRow>
+                    <TableRow>
+                      <TableCell>Risk score</TableCell>
+                      <TableCell>{company.creditsafeRiskScore ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">creditsafe</Badge>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Credit limit</TableCell>
+                      <TableCell>{formatUsdCompact(company.creditsafeCreditLimit)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">creditsafe</Badge>
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Source shown is whichever provider the pipeline prefers by default (Creditsafe for revenue and
-                headcount) — it doesn&apos;t yet reflect which one actually supplied this specific value when a
-                fallback was used. The full per-field source breakdown (from `enrichment_data`) isn&apos;t wired up
-                here yet either.
+                Revenue and Headcount are sourced from Cognism by default; the Source column shows
+                &quot;creditsafe&quot; whenever this specific company had no Cognism value and Creditsafe was used
+                as a fallback instead. Risk score feeds the Credit risk category in the score breakdown above;
+                Credit limit is a BD reference only and never affects the score.
               </p>
             </CardContent>
           </Card>
