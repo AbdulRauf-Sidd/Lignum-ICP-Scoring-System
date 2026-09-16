@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Banknote, Calculator, CheckCircle2, FileText, Loader2, MessagesSquare } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatMultiCurrency, formatNumber } from "@/lib/format";
 import { getAccountMetrics, type AccountMetrics as AccountMetricsData } from "@/app/(dashboard)/accounts/actions";
@@ -125,14 +125,9 @@ export function AccountMetrics({ companyId }: { companyId: number }) {
         </Select>
         {preset === "custom" && (
           <>
-            <Input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="w-40 bg-card"
-            />
+            <UkDateInput value={customStart} onChange={setCustomStart} className="w-32 bg-card" />
             <span className="text-sm text-muted-foreground">to</span>
-            <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-40 bg-card" />
+            <UkDateInput value={customEnd} onChange={setCustomEnd} className="w-32 bg-card" />
           </>
         )}
         {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}

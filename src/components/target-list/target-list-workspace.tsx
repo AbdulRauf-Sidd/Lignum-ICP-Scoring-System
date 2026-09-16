@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowUpDown, Archive, ArchiveRestore, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -356,22 +357,20 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
         />
         <div className="flex shrink-0 items-center gap-1.5">
           <Label className="whitespace-nowrap text-xs text-muted-foreground">Enriched</Label>
-          <Input
-            type="date"
-            className="w-36"
+          <UkDateInput
+            className="w-32"
             value={enrichedAtStart}
-            onChange={(e) => {
-              setEnrichedAtStart(e.target.value);
+            onChange={(v) => {
+              setEnrichedAtStart(v);
               setPage(1);
             }}
           />
           <span className="text-xs text-muted-foreground">to</span>
-          <Input
-            type="date"
-            className="w-36"
+          <UkDateInput
+            className="w-32"
             value={enrichedAtEnd}
-            onChange={(e) => {
-              setEnrichedAtEnd(e.target.value);
+            onChange={(v) => {
+              setEnrichedAtEnd(v);
               setPage(1);
             }}
           />
