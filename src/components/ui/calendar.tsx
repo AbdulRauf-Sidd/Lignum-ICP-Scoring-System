@@ -18,7 +18,11 @@ export function Calendar({ className, classNames, ...props }: DayPickerProps) {
       classNames={{
         months: "flex flex-col gap-3",
         month: "flex flex-col gap-3",
-        month_caption: "flex items-center justify-center pt-1 relative",
+        // relative (for the nav's absolute positioning to anchor against) but
+        // pointer-events-none — otherwise this spans the full row width and,
+        // being a later/positioned sibling of `nav`, sits on top of and
+        // swallows clicks on the prev/next month buttons underneath it.
+        month_caption: "flex items-center justify-center pt-1 relative pointer-events-none",
         caption_label: "text-sm font-medium",
         nav: "flex items-center justify-between absolute inset-x-0 top-0.5",
         button_previous: cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "text-muted-foreground"),

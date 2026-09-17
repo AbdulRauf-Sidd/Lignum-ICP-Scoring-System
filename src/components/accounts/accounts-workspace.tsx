@@ -15,6 +15,7 @@ import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
 import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
 import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights, AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
+import { type DatePreset, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
 const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: string }> = {
@@ -110,6 +111,14 @@ function AccountDetail({
   const health = computeAccountHealth(qualitativeState, talentInsightsState, healthWeights);
   const bandMeta = HEALTH_BAND_META[health.band];
 
+  // Shared with AccountJobsTable below, so the same date range that scopes
+  // the metric cards also scopes which jobs are listed — one selector for
+  // the whole account view rather than two that could disagree.
+  const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
+  const [customStart, setCustomStart] = React.useState("");
+  const [customEnd, setCustomEnd] = React.useState("");
+  const dateRange = datePresetRange(datePreset, customStart, customEnd);
+
   return (
     <div className="flex flex-col gap-4">
       <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" asChild>
@@ -176,9 +185,17 @@ function AccountDetail({
           <AccountTalentInsights companyId={header.companyId} insights={talentInsightsState} onInsightsChange={setTalentInsightsState} />
         </div>
 
-        <AccountMetrics companyId={header.companyId} />
+        <AccountMetrics
+          companyId={header.companyId}
+          preset={datePreset}
+          onPresetChange={setDatePreset}
+          customStart={customStart}
+          onCustomStartChange={setCustomStart}
+          customEnd={customEnd}
+          onCustomEndChange={setCustomEnd}
+        />
 
-        <AccountJobsTable jobs={jobs} companyId={header.companyId} />
+        <AccountJobsTable jobs={jobs} companyId={header.companyId} rangeStart={dateRange.start} rangeEnd={dateRange.end} />
       </div>
     </div>
   );
