@@ -128,20 +128,16 @@ export function AccountJobsTable({ jobs, companyId }: { jobs: AccountJob[]; comp
                                       <span className="text-sm font-medium">Candidate #{c.personId}</span>
                                       <span className="text-xs text-muted-foreground">added {formatDate(c.addedAt)}</span>
                                     </div>
-                                    {c.events.length === 0 ? (
-                                      <p className="text-xs text-muted-foreground">No activity logged.</p>
-                                    ) : (
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {c.events.map((e) => {
-                                          const meta = activityMeta(e.activityKey);
-                                          return (
-                                            <Badge key={e.eventId} variant="outline" className={cn("border-transparent text-[11px]", meta.className)}>
-                                              {meta.label} · {formatDate(e.createdAt)}
-                                            </Badge>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {c.events.map((e) => {
+                                        const meta = activityMeta(e.activityKey);
+                                        return (
+                                          <Badge key={e.eventId} variant="outline" className={cn("border-transparent text-[11px]", meta.className)}>
+                                            {meta.label} · {formatDate(e.createdAt)}
+                                          </Badge>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
