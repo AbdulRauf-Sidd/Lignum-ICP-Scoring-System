@@ -10,20 +10,10 @@ import {
 } from "@/lib/data/accounts";
 import type { CurrencyAmount } from "@/lib/format";
 
-// A candidate can hit the same activity twice on the same job (re-sent CV,
-// duplicate status log, etc.) — 70 of 607 real event rows are exactly that.
-// Counting raw rows would inflate the metrics, so we count each person once
-// per activity within the company. Flip this if raw-event counting is ever
-// wanted instead — the CV metric below reads this one flag (first interviews
-// has its own fixed dedupe rule — see countFirstInterviews).
-const COUNT_DISTINCT_PERSONS = true;
-
 const CV_ACTIVITY_KEY = "submitted";
-// A candidate can be logged as reaching a first interview under either key —
-// they're two names for the same funnel stage in the source data (45 rows
-// use one, 154 the other, and a handful of (job_id, person_id) pairs have
-// both). Whichever fired, it should only count once per job+person.
-const FIRST_INTERVIEW_ACTIVITY_KEYS = ["moved_to_1st_stage_interviews", "client_interview"];
+const EVENT_PAGE_SIZE = 1_000;
+// Each candidate/job pair counts once across the first-interview event keys.
+const FIRST_INTERVIEW_ACTIVITY_KEYS = ["client_interview", "moved_to_1st_stage_interviews"];
 
 // fee_type_id on active_accounts_placements: 1 = percentage of salary, 2 =
 // flat amount. (3 = hourly exists on fee_type but never appears on a real
@@ -56,8 +46,9 @@ interface EventRow {
 
 function countCvs(rows: EventRow[]): number {
   const matching = rows.filter((r) => r.activity_key === CV_ACTIVITY_KEY);
-  if (COUNT_DISTINCT_PERSONS) return new Set(matching.map((r) => r.person_id)).size;
-  return matching.length;
+  // A re-sent CV or duplicate status log should not inflate the total, but a
+  // CV sent for a different job is a separate submission.
+  return new Set(matching.map((r) => `${r.job_id}:${r.person_id}`)).size;
 }
 
 // Deduped by (job_id, person_id) rather than person_id alone — the two
@@ -90,9 +81,8 @@ function placementRevenue(row: PlacementRow): number | null {
 export async function getAccountMetrics(companyId: number, startDate: string, endDate: string): Promise<AccountMetrics> {
   const supabase = getSupabaseServerClient();
 
-  // Every metric below is scoped to Tier 1 / Tier 2 jobs only — resolve the
-  // company's tier 1/2 job ids first, then filter events and placements to
-  // just those jobs.
+  // Placements remain scoped to Tier 1 / Tier 2 jobs. CV and interview event
+  // totals intentionally use every event belonging to the selected company.
   const { data: jobRows, error: jobsError } = await supabase
     .from("active_accounts_jobs")
     .select("job_id")
@@ -101,32 +91,48 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
   const jobIds = (jobRows ?? []).map((r) => r.job_id as number);
-  if (jobIds.length === 0) {
-    return { totalCvs: 0, firstInterviews: 0, totalPlacements: 0, revenue: [], revenueUsd: 0, revenueRatesLive: true };
-  }
+  const fetchEventPages = async (activityKeys: string[], metricName: string): Promise<EventRow[]> => {
+    const allRows: EventRow[] = [];
 
-  const [{ data: eventRows, error: eventsError }, { data: placementRows, error: placementsError }] = await Promise.all([
-    supabase
-      .from("active_accounts_jobs_candidates_events")
-      .select("job_id, person_id, activity_key")
-      .eq("company_id", companyId)
-      .in("job_id", jobIds)
-      .gte("created_at", startDate)
-      .lte("created_at", endDate)
-      .in("activity_key", [CV_ACTIVITY_KEY, ...FIRST_INTERVIEW_ACTIVITY_KEYS]),
-    supabase
-      .from("active_accounts_placements")
-      .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
-      .eq("company_id", companyId)
-      .in("job_id", jobIds)
-      .gte("created_at", startDate)
-      .lte("created_at", endDate),
+    for (let offset = 0; ; offset += EVENT_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("active_accounts_jobs_candidates_events")
+        .select("job_id, person_id, activity_key")
+        .eq("company_id", companyId)
+        .in("activity_key", activityKeys)
+        .order("event_id", { ascending: true })
+        .range(offset, offset + EVENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load ${metricName} metrics: ${error.message}`);
+
+      const page = (data ?? []) as EventRow[];
+      allRows.push(...page);
+      if (page.length < EVENT_PAGE_SIZE) return allRows;
+    }
+  };
+
+  const cvEventsPromise = fetchEventPages([CV_ACTIVITY_KEY], "CV");
+  const interviewEventsPromise = fetchEventPages(FIRST_INTERVIEW_ACTIVITY_KEYS, "first interview");
+
+  const [
+    cvRows,
+    interviewRows,
+    { data: placementRows, error: placementsError },
+  ] = await Promise.all([
+    cvEventsPromise,
+    interviewEventsPromise,
+    jobIds.length > 0
+      ? supabase
+          .from("active_accounts_placements")
+          .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
+          .eq("company_id", companyId)
+          .in("job_id", jobIds)
+          .gte("created_at", startDate)
+          .lte("created_at", endDate)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (eventsError) throw new Error(`Failed to load account metrics: ${eventsError.message}`);
   if (placementsError) throw new Error(`Failed to load placements: ${placementsError.message}`);
 
-  const rows = (eventRows ?? []) as EventRow[];
   const placements = (placementRows ?? []) as unknown as PlacementRow[];
 
   // Roughly a fifth of companies have placements in more than one currency —
@@ -155,8 +161,8 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   }
 
   return {
-    totalCvs: countCvs(rows),
-    firstInterviews: countFirstInterviews(rows),
+    totalCvs: countCvs(cvRows),
+    firstInterviews: countFirstInterviews(interviewRows),
     totalPlacements: placements.length,
     revenue,
     revenueUsd,
