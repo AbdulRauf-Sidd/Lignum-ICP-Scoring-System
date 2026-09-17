@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { FieldSource } from "@/lib/types";
+import { convertToUsd, getUsdExchangeRates } from "@/lib/exchange-rates";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -10,6 +11,10 @@ import type { FieldSource } from "@/lib/types";
 // two categories — the other real values (Tier 3, Tier 3 Spec, Retainer,
 // Tom Wood, Dropout, null) are out of scope for this page.
 export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2",  "T2T1"] as const;
+
+const PLACEMENT_PAGE_SIZE = 1_000;
+const FEE_TYPE_PERCENTAGE = 1;
+const FEE_TYPE_FLAT = 2;
 
 export interface AccountListItem {
   companyId: number;
@@ -55,22 +60,91 @@ interface AccountListRow {
   revenue_currency: { code: string; symbol: string } | null;
 }
 
+interface AccountListJobRow {
+  company_id: number;
+  job_id: number;
+}
+
+interface AccountListPlacementRow {
+  company_id: number;
+  job_id: number;
+  fee: number;
+  fee_type_id: number | null;
+  salary: number;
+  currency: { code: string } | null;
+}
+
+function calculatePlacementRevenue(row: AccountListPlacementRow): number | null {
+  if (row.fee_type_id === FEE_TYPE_PERCENTAGE) return (row.salary * row.fee) / 100;
+  if (row.fee_type_id === FEE_TYPE_FLAT) return row.fee;
+  return null;
+}
+
 export async function getAccountsList(): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("active_accounts")
-    .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
-    .order("company_name");
+  const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
+    const allRows: AccountListJobRow[] = [];
+    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("active_accounts_jobs")
+        .select("company_id, job_id")
+        .in("job_category", ALLOWED_JOB_CATEGORIES)
+        .order("job_id", { ascending: true })
+        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
 
+      const page = (data ?? []) as AccountListJobRow[];
+      allRows.push(...page);
+      if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
+    }
+  };
+  const fetchPlacementRows = async (): Promise<AccountListPlacementRow[]> => {
+    const allRows: AccountListPlacementRow[] = [];
+    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("active_accounts_placements")
+        .select("company_id, job_id, fee, fee_type_id, salary, currency:currencies!salary_currency_id(code)")
+        .order("placement_id", { ascending: true })
+        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load account placements: ${error.message}`);
+
+      const page = (data ?? []) as unknown as AccountListPlacementRow[];
+      allRows.push(...page);
+      if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
+    }
+  };
+
+  const [{ data, error }, tierJobRows, placementRows, { rates }] = await Promise.all([
+    supabase
+      .from("active_accounts")
+      .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
+      .order("company_name"),
+    fetchTierJobRows(),
+    fetchPlacementRows(),
+    getUsdExchangeRates(),
+  ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
+
+  const tierJobKeys = new Set(tierJobRows.map((row) => `${row.company_id}:${row.job_id}`));
+  const revenueByCompany = new Map<number, number>();
+  for (const placement of placementRows) {
+    if (!tierJobKeys.has(`${placement.company_id}:${placement.job_id}`)) continue;
+
+    const revenue = calculatePlacementRevenue(placement);
+    if (revenue === null) continue;
+    const revenueUsd = convertToUsd(revenue, placement.currency?.code ?? null, rates);
+    if (revenueUsd === null) continue;
+
+    revenueByCompany.set(placement.company_id, (revenueByCompany.get(placement.company_id) ?? 0) + revenueUsd);
+  }
 
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => ({
     companyId: r.company_id,
     companyName: r.company_name,
     status: r.status,
     ownedBy: r.owned_by,
-    totalRevenue: r.total_revenue,
-    revenueCurrencyCode: r.revenue_currency?.code ?? null,
+    totalRevenue: revenueByCompany.get(r.company_id) ?? 0,
+    revenueCurrencyCode: "USD",
     updatedAt: r.updated_at,
   }));
 }
