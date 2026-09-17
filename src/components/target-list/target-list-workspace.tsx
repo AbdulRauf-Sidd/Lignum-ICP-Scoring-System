@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ICP_NAMES, SECTORS } from "@/lib/constants";
+import { ICP_NAMES } from "@/lib/constants";
 import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
@@ -29,7 +29,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type SortKey = "score" | "confidence" | "name" | "enrichedAt";
-type ExportedFilter = "all" | "exported" | "not_exported";
 type View = "scorecard" | "detail";
 
 const PAGE_SIZE = 20;
@@ -62,9 +61,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const scoredCompanies = companies;
   const [tab, setTab] = React.useState<string>("all");
   const [view, setView] = React.useState<View>("scorecard");
-  const [subSector, setSubSector] = React.useState<string>("all");
   const [tier, setTier] = React.useState<"all" | "A" | "B" | "C">("all");
-  const [exportedFilter, setExportedFilter] = React.useState<ExportedFilter>("all");
   const [search, setSearch] = React.useState("");
   const [enrichedAtStart, setEnrichedAtStart] = React.useState("");
   const [enrichedAtEnd, setEnrichedAtEnd] = React.useState("");
@@ -83,8 +80,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
       return next;
     });
   }
-
-  const subSectorOptions = tab === "all" ? [] : SECTORS.find((s) => s.sector === tab)?.subSectors ?? [];
 
   const notArchived = React.useMemo(
     () => scoredCompanies.filter((c) => showArchived || !archived.has(c.id)),
@@ -130,9 +125,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
 
   const filtered = scoredCompanies
     .filter((c) => tab === "all" || c.icp === tab)
-    .filter((c) => subSector === "all" || c.subSector === subSector)
     .filter((c) => tier === "all" || c.tier === tier)
-    .filter((c) => (exportedFilter === "all" ? true : exportedFilter === "exported" ? c.exported : !c.exported))
     .filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     .filter((c) => (showArchived ? true : !archived.has(c.id)))
     .filter((c) => {
@@ -158,18 +151,14 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const paged = sorted.slice((effectivePage - 1) * PAGE_SIZE, effectivePage * PAGE_SIZE);
 
   const activeFilterCount = [
-    subSector !== "all",
     tier !== "all",
-    exportedFilter !== "all",
     search !== "",
     enrichedAtStart !== "",
     enrichedAtEnd !== "",
   ].filter(Boolean).length;
 
   function resetFilters() {
-    setSubSector("all");
     setTier("all");
-    setExportedFilter("all");
     setSearch("");
     setEnrichedAtStart("");
     setEnrichedAtEnd("");
@@ -193,7 +182,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
               key={name}
               onClick={() => {
                 setTab(name);
-                setSubSector("all");
                 setPage(1);
               }}
               className={cn(
@@ -294,20 +282,7 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
           ))}
         </div>
 
-        <FilterSelect
-          label="Sub-sector"
-          hideLabel
-          width="w-40"
-          value={subSector}
-          onChange={(v) => {
-            setSubSector(v);
-            setPage(1);
-          }}
-          disabled={tab === "all"}
-          options={[{ value: "all", label: "All sub-sectors" }, ...subSectorOptions.map((s) => ({ value: s, label: s }))]}
-        />
-
-        <div className="relative w-40 shrink-0">
+         <div className="relative w-40 shrink-0">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search company"
@@ -341,40 +316,26 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
       </div>
 
       <div className="flex flex-nowrap items-center gap-3 overflow-x-auto">
-        <FilterSelect
-          label="Exported"
-          width="w-32"
-          value={exportedFilter}
-          onChange={(v) => {
-            setExportedFilter(v as ExportedFilter);
-            setPage(1);
-          }}
-          options={[
-            { value: "all", label: "All" },
-            { value: "exported", label: "Exported" },
-            { value: "not_exported", label: "Not exported" },
-          ]}
-        />
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Label className="whitespace-nowrap text-xs text-muted-foreground">Enriched</Label>
-          <UkDateInput
-            className="w-32"
-            value={enrichedAtStart}
-            onChange={(v) => {
-              setEnrichedAtStart(v);
-              setPage(1);
-            }}
-          />
-          <span className="text-xs text-muted-foreground">to</span>
-          <UkDateInput
-            className="w-32"
-            value={enrichedAtEnd}
-            onChange={(v) => {
-              setEnrichedAtEnd(v);
-              setPage(1);
-            }}
-          />
-        </div>
+         <div className="flex shrink-0 items-center gap-1.5">
+           <Label className="whitespace-nowrap text-xs text-muted-foreground">Enriched</Label>
+           <UkDateInput
+             className="w-32"
+             value={enrichedAtStart}
+             onChange={(v) => {
+               setEnrichedAtStart(v);
+               setPage(1);
+             }}
+           />
+           <span className="text-xs text-muted-foreground">to</span>
+           <UkDateInput
+             className="w-32"
+             value={enrichedAtEnd}
+             onChange={(v) => {
+               setEnrichedAtEnd(v);
+               setPage(1);
+             }}
+           />
+         </div>
         {activeFilterCount > 0 && (
           <Button variant="ghost" size="sm" onClick={resetFilters} className="shrink-0 text-muted-foreground">
             <X /> Clear filters
