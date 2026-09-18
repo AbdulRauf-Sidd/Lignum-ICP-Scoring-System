@@ -61,10 +61,23 @@ function MetricCard({
   );
 }
 
-export function AccountMetrics({ companyId }: { companyId: number }) {
-  const [preset, setPreset] = React.useState<DatePreset>("all_time");
-  const [customStart, setCustomStart] = React.useState("");
-  const [customEnd, setCustomEnd] = React.useState("");
+export function AccountMetrics({
+  companyId,
+  preset,
+  onPresetChange,
+  customStart,
+  onCustomStartChange,
+  customEnd,
+  onCustomEndChange,
+}: {
+  companyId: number;
+  preset: DatePreset;
+  onPresetChange: (preset: DatePreset) => void;
+  customStart: string;
+  onCustomStartChange: (value: string) => void;
+  customEnd: string;
+  onCustomEndChange: (value: string) => void;
+}) {
   const [metrics, setMetrics] = React.useState<AccountMetricsData | null>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -111,7 +124,7 @@ export function AccountMetrics({ companyId }: { companyId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={preset} onValueChange={(v) => setPreset(v as DatePreset)}>
+        <Select value={preset} onValueChange={(v) => onPresetChange(v as DatePreset)}>
           <SelectTrigger className="w-40 bg-card">
             <SelectValue />
           </SelectTrigger>
@@ -125,9 +138,9 @@ export function AccountMetrics({ companyId }: { companyId: number }) {
         </Select>
         {preset === "custom" && (
           <>
-            <UkDateInput value={customStart} onChange={setCustomStart} className="w-32 bg-card" />
+            <UkDateInput value={customStart} onChange={onCustomStartChange} className="w-32 bg-card" />
             <span className="text-sm text-muted-foreground">to</span>
-            <UkDateInput value={customEnd} onChange={setCustomEnd} className="w-32 bg-card" />
+            <UkDateInput value={customEnd} onChange={onCustomEndChange} className="w-32 bg-card" />
           </>
         )}
         {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}

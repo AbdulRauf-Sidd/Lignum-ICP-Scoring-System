@@ -27,10 +27,35 @@ function feeDisplay(job: AccountJob): string {
   return job.feeTypeKey ? `${amount} (${job.feeTypeKey})` : amount;
 }
 
-export function AccountJobsTable({ jobs, companyId }: { jobs: AccountJob[]; companyId: number }) {
+// Bounds are inclusive day strings (YYYY-MM-DD), or null for an open end —
+// mirrors how getAccountMetrics turns the same bounds into query timestamps,
+// so a job created any time on rangeEnd's date is still included.
+function jobInRange(createdAt: string, rangeStart: string | null, rangeEnd: string | null): boolean {
+  const t = new Date(createdAt).getTime();
+  if (rangeStart && t < new Date(`${rangeStart}T00:00:00.000Z`).getTime()) return false;
+  if (rangeEnd && t > new Date(`${rangeEnd}T23:59:59.999Z`).getTime()) return false;
+  return true;
+}
+
+export function AccountJobsTable({
+  jobs,
+  companyId,
+  rangeStart,
+  rangeEnd,
+}: {
+  jobs: AccountJob[];
+  companyId: number;
+  rangeStart: string | null;
+  rangeEnd: string | null;
+}) {
   const [expanded, setExpanded] = React.useState<Set<number>>(new Set());
   const [candidatesByJob, setCandidatesByJob] = React.useState<Record<number, JobCandidate[]>>({});
   const [loadingJobId, setLoadingJobId] = React.useState<number | null>(null);
+
+  const visibleJobs = React.useMemo(
+    () => jobs.filter((job) => jobInRange(job.createdAt, rangeStart, rangeEnd)),
+    [jobs, rangeStart, rangeEnd],
+  );
 
   async function toggle(jobId: number) {
     setExpanded((prev) => {
@@ -68,14 +93,14 @@ export function AccountJobsTable({ jobs, companyId }: { jobs: AccountJob[]; comp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {jobs.length === 0 && (
+              {visibleJobs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                    No jobs on record for this account.
+                    {jobs.length === 0 ? "No jobs on record for this account." : "No jobs created in this date range."}
                   </TableCell>
                 </TableRow>
               )}
-              {jobs.map((job) => {
+              {visibleJobs.map((job) => {
                 const isOpen = expanded.has(job.jobId);
                 const candidates = candidatesByJob[job.jobId];
                 return (
@@ -128,20 +153,16 @@ export function AccountJobsTable({ jobs, companyId }: { jobs: AccountJob[]; comp
                                       <span className="text-sm font-medium">Candidate #{c.personId}</span>
                                       <span className="text-xs text-muted-foreground">added {formatDate(c.addedAt)}</span>
                                     </div>
-                                    {c.events.length === 0 ? (
-                                      <p className="text-xs text-muted-foreground">No activity logged.</p>
-                                    ) : (
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {c.events.map((e) => {
-                                          const meta = activityMeta(e.activityKey);
-                                          return (
-                                            <Badge key={e.eventId} variant="outline" className={cn("border-transparent text-[11px]", meta.className)}>
-                                              {meta.label} · {formatDate(e.createdAt)}
-                                            </Badge>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {c.events.map((e) => {
+                                        const meta = activityMeta(e.activityKey);
+                                        return (
+                                          <Badge key={e.eventId} variant="outline" className={cn("border-transparent text-[11px]", meta.className)}>
+                                            {meta.label} · {formatDate(e.createdAt)}
+                                          </Badge>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 ))}
                               </div>

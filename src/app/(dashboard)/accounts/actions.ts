@@ -100,6 +100,8 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
         .select("job_id, person_id, activity_key")
         .eq("company_id", companyId)
         .in("activity_key", activityKeys)
+        .gte("created_at", startDate)
+        .lte("created_at", endDate)
         .order("event_id", { ascending: true })
         .range(offset, offset + EVENT_PAGE_SIZE - 1);
       if (error) throw new Error(`Failed to load ${metricName} metrics: ${error.message}`);
@@ -215,19 +217,42 @@ export async function getJobCandidates(jobId: number, companyId: number): Promis
   if (candidatesError) throw new Error(`Failed to load candidates: ${candidatesError.message}`);
   if (eventsError) throw new Error(`Failed to load candidate events: ${eventsError.message}`);
 
+  // The source system frequently double-logs the same event a few hours
+  // apart (same job/person/activity_key, same calendar date, two event_ids)
+  // — confirmed in real data: of the job/person/activity_key groups with
+  // more than one row, ~95% share a single date. Real repeats (e.g. several
+  // interviews over separate weeks) do exist and must stay distinct, so the
+  // dedupe key is (activity_key, date) rather than just activity_key — only
+  // same-day repeats of the same activity are collapsed.
   const eventsByPerson = new Map<number, CandidateEvent[]>();
+  const seenKeys = new Map<number, Set<string>>();
   for (const e of (eventRows ?? []) as CandidateEventRow[]) {
+    const seen = seenKeys.get(e.person_id) ?? new Set<string>();
+    const dedupeKey = `${e.activity_key}:${e.created_at.slice(0, 10)}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    seenKeys.set(e.person_id, seen);
+
     const list = eventsByPerson.get(e.person_id) ?? [];
     list.push({ eventId: e.event_id, activityKey: e.activity_key, createdAt: e.created_at });
     eventsByPerson.set(e.person_id, list);
   }
 
-  return ((candidateRows ?? []) as CandidateRow[]).map((c) => ({
-    candidateId: c.candidate_id,
-    personId: c.person_id,
-    addedAt: c.created_at,
-    events: eventsByPerson.get(c.person_id) ?? [],
-  }));
+  // Most candidates added to a job (roughly two-thirds, in the real data)
+  // never got a single event logged — added but nothing tracked since. Those
+  // are dropped rather than shown as an empty "No activity logged" row; a
+  // candidate is only listed once something's actually happened to them,
+  // whatever the activity — not just the CV/interview keys the metrics
+  // above count, since e.g. a real "hired" candidate can lack a logged
+  // "submitted" event and would otherwise be wrongly hidden.
+  return ((candidateRows ?? []) as CandidateRow[])
+    .filter((c) => eventsByPerson.has(c.person_id))
+    .map((c) => ({
+      candidateId: c.candidate_id,
+      personId: c.person_id,
+      addedAt: c.created_at,
+      events: eventsByPerson.get(c.person_id) ?? [],
+    }));
 }
 
 // Scorecard ratings and talent insights are plain columns on active_accounts
