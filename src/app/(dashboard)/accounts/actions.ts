@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
+import { getModelSettings } from "@/lib/data/model-settings";
 import {
   ALLOWED_JOB_CATEGORIES,
   QUALITATIVE_METRICS,
@@ -36,6 +37,11 @@ export interface AccountMetrics {
   // rather than a live/cached fetch — lets the caller avoid claiming "today's
   // rates" when they aren't. Meaningless when revenueUsd is null.
   revenueRatesLive: boolean;
+  // totalCvs * model_settings.cv_cost / firstInterviews * .interview_cost —
+  // null when that cost isn't configured on the Model config page, so the
+  // caller can show a placeholder instead of a wrong $0 figure.
+  cvCost: number | null;
+  interviewCost: number | null;
 }
 
 interface EventRow {
@@ -119,6 +125,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     cvRows,
     interviewRows,
     { data: placementRows, error: placementsError },
+    modelSettings,
   ] = await Promise.all([
     cvEventsPromise,
     interviewEventsPromise,
@@ -131,6 +138,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
           .gte("created_at", startDate)
           .lte("created_at", endDate)
       : Promise.resolve({ data: [], error: null }),
+    getModelSettings(),
   ]);
 
   if (placementsError) throw new Error(`Failed to load placements: ${placementsError.message}`);
@@ -162,13 +170,18 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     revenueUsd += converted;
   }
 
+  const totalCvs = countCvs(cvRows);
+  const firstInterviews = countFirstInterviews(interviewRows);
+
   return {
-    totalCvs: countCvs(cvRows),
-    firstInterviews: countFirstInterviews(interviewRows),
+    totalCvs,
+    firstInterviews,
     totalPlacements: placements.length,
     revenue,
     revenueUsd,
     revenueRatesLive: live,
+    cvCost: modelSettings.cv_cost !== null ? totalCvs * modelSettings.cv_cost : null,
+    interviewCost: modelSettings.interview_cost !== null ? firstInterviews * modelSettings.interview_cost : null,
   };
 }
 

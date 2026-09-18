@@ -110,17 +110,6 @@ export function AccountMetrics({
     };
   }, [companyId, rangeStart, rangeEnd]);
 
-  // Same USD revenue and counts as the cards above, both scoped to the
-  // selected date range — so the price moves only when the underlying
-  // activity does, not from switching between a lifetime figure and a
-  // windowed one. Converting first then dividing (rather than dividing each
-  // currency bucket and converting after) gives the same result but only
-  // needs the one already-converted total.
-  const pricePerCv =
-    metrics && metrics.revenueUsd !== null && metrics.totalCvs > 0 ? metrics.revenueUsd / metrics.totalCvs : null;
-  const pricePerInterview =
-    metrics && metrics.revenueUsd !== null && metrics.firstInterviews > 0 ? metrics.revenueUsd / metrics.firstInterviews : null;
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -172,16 +161,16 @@ export function AccountMetrics({
           icon={CheckCircle2}
         />
         <MetricCard
-          label="Price / CV"
-          value={formatCurrency(pricePerCv, "USD")}
-          hint="Revenue ÷ CVs, this date range"
+          label="CV cost"
+          value={metrics ? formatCurrency(metrics.cvCost, "USD") : "—"}
+          hint="Total CVs × CV cost, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
-          label="Price / interview"
-          value={formatCurrency(pricePerInterview, "USD")}
-          hint="Revenue ÷ interviews, this date range"
+          label="Interview cost"
+          value={metrics ? formatCurrency(metrics.interviewCost, "USD") : "—"}
+          hint="First interviews × interview cost, this date range"
           tone="teal"
           icon={Calculator}
         />
