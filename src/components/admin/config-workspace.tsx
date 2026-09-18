@@ -860,6 +860,9 @@ export function ConfigWorkspace({
                           Cognism data and checks whether each company meets it. A hard requirement that&apos;s{" "}
                           <em>not</em> met flags the company as a weak / wrong-ICP match and subtracts the hard
                           penalty from ICP fit below; a soft signal not met subtracts the soft penalty instead.
+                          The LLM only sees: revenue, headcount, a short company description, headquarters/location,
+                          registered address, turnover, country, and credit score — write rules against these, not
+                          fields outside this list.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>

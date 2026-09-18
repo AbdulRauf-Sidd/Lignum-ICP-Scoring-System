@@ -164,13 +164,13 @@ async function getLatestBreakdownsByCompanyId(
   return latestByCompany;
 }
 
-export async function getScoredCompanies(): Promise<Company[]> {
+export async function getScoredCompanies(search?: string): Promise<Company[]> {
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("status", "scored")
-    .order("score", { ascending: false });
+  let query = supabase.from("companies").select("*").eq("status", "scored").order("score", { ascending: false });
+  if (search) {
+    query = query.ilike("name", `%${search}%`);
+  }
+  const { data, error } = await query;
 
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
 

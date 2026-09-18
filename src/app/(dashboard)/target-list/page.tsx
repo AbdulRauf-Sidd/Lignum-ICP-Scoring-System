@@ -6,8 +6,10 @@ import { getScoredCompanies } from "@/lib/data/companies";
 // this at build time.
 export const dynamic = "force-dynamic";
 
-export default async function TargetListPage() {
-  const companies = await getScoredCompanies();
+export default async function TargetListPage({ searchParams }: PageProps<"/target-list">) {
+  const params = await searchParams;
+  const search = Array.isArray(params.q) ? params.q[0] : params.q;
+  const companies = await getScoredCompanies(search);
 
   return (
     <div>
@@ -15,7 +17,7 @@ export default async function TargetListPage() {
         title="Target list"
         description="Approved companies ranked by score, tabbed by ICP. Shared across the team."
       />
-      <TargetListWorkspace companies={companies} />
+      <TargetListWorkspace companies={companies} initialSearch={search ?? ""} />
     </div>
   );
 }

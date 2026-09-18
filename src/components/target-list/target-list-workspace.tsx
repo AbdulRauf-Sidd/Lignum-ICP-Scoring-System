@@ -2,18 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpDown, Archive, ArchiveRestore, ChevronRight, Search, TriangleAlert, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -57,12 +51,14 @@ function computeStats(list: Company[]): IcpStats {
   };
 }
 
-export function TargetListWorkspace({ companies }: { companies: Company[] }) {
+export function TargetListWorkspace({ companies, initialSearch }: { companies: Company[]; initialSearch: string }) {
   const scoredCompanies = companies;
+  const router = useRouter();
+  const pathname = usePathname();
   const [tab, setTab] = React.useState<string>("all");
   const [view, setView] = React.useState<View>("scorecard");
   const [tier, setTier] = React.useState<"all" | "A" | "B" | "C">("all");
-  const [search, setSearch] = React.useState("");
+  const [search, setSearch] = React.useState(initialSearch);
   const [enrichedAtStart, setEnrichedAtStart] = React.useState("");
   const [enrichedAtEnd, setEnrichedAtEnd] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("score");
@@ -71,6 +67,17 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const [showArchived, setShowArchived] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
+
+  // Search runs server-side (name match happens in the Supabase query, not
+  // client-side filtering below) -- debounced so we're not re-fetching the
+  // whole list on every keystroke.
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      const query = search ? `?q=${encodeURIComponent(search)}` : "";
+      router.replace(`${pathname}${query}`, { scroll: false });
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [search, router, pathname]);
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -126,7 +133,6 @@ export function TargetListWorkspace({ companies }: { companies: Company[] }) {
   const filtered = scoredCompanies
     .filter((c) => tab === "all" || c.icp === tab)
     .filter((c) => tier === "all" || c.tier === tier)
-    .filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     .filter((c) => (showArchived ? true : !archived.has(c.id)))
     .filter((c) => {
       if (enrichedStartMs === null && enrichedEndMs === null) return true;
@@ -640,38 +646,3 @@ function SortableHead({
   );
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  disabled,
-  width = "w-36",
-  hideLabel = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  disabled?: boolean;
-  width?: string;
-  hideLabel?: boolean;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      {!hideLabel && <Label className="whitespace-nowrap text-xs text-muted-foreground">{label}</Label>}
-      <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger className={width} aria-label={hideLabel ? label : undefined}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
