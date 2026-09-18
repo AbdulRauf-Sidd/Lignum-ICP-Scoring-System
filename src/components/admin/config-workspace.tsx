@@ -673,17 +673,26 @@ export function ConfigWorkspace({
   const activeDraft = drafts.find((d) => d.clientKey === activeTab) ?? null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <Card className="border-primary/30 bg-primary/5">
         <CardContent>
           <p className="text-sm font-semibold">The model is config, not code.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Weights, bands and target sectors are set per ICP. Changes apply on the next score or re-score, with no
-            new API spend.
+            Two independent models live on this page — <strong>ICP fit</strong> (per-profile scoring for the Target
+            List) and <strong>Account Health</strong> (global, powers the Accounts module). They share nothing except
+            this page; each has its own weights and applies on its own schedule.
           </p>
         </CardContent>
       </Card>
 
+      <section className="rounded-xl border border-primary/25 bg-primary/[0.025] p-4 sm:p-5">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Badge className="border-transparent bg-primary text-primary-foreground">ICP Fit</Badge>
+        <h2 className="text-sm font-semibold">Per-profile scoring model</h2>
+        <span className="text-xs text-muted-foreground">— applies to Target List scoring only</span>
+      </div>
+
+      <div className="flex flex-col gap-8">
       <div>
         <p className="mb-3 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Per-profile settings</p>
 
@@ -939,7 +948,7 @@ export function ConfigWorkspace({
       </div>
 
       <div>
-        <p className="mb-3 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Shared base · all profiles</p>
+        <p className="mb-3 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Shared across all ICP profiles</p>
 
         <div className="flex flex-col gap-6">
           <Card>
@@ -1030,6 +1039,77 @@ export function ConfigWorkspace({
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle>Enrichment run settings</CardTitle>
+              <CardDescription>Used to estimate cost before an enrichment run.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Indicative price per credit</Label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-muted-foreground">£</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className="h-8 w-24"
+                    placeholder="—"
+                    value={settingsDraft.indicative_price_per_credit ?? ""}
+                    disabled={savingSettings}
+                    onChange={(e) => updateSettings({ indicative_price_per_credit: e.target.value === "" ? null : Number(e.target.value) })}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Leave blank to hide the £ figure</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between">
+              <div>
+                <CardTitle>Automatic re-pull</CardTitle>
+                <CardDescription>
+                  When enabled, every company is automatically re-enriched once its data is older than the interval
+                  below — without needing a new import.
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settingsDraft.auto_repull_enabled}
+                disabled={savingSettings}
+                onCheckedChange={(v) => updateSettings({ auto_repull_enabled: v })}
+              />
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Re-pull after</Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={1}
+                    className="h-8 w-20"
+                    value={settingsDraft.re_pull_after_days}
+                    disabled={savingSettings || !settingsDraft.auto_repull_enabled}
+                    onChange={(e) => updateSettings({ re_pull_after_days: Number(e.target.value) })}
+                  />
+                  <span className="text-sm text-muted-foreground">days</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      </div>
+      </section>
+
+      <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/[0.04] p-4 sm:p-5">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Badge className="border-transparent bg-indigo-600 text-white">Global</Badge>
+        <h2 className="text-sm font-semibold">Account Health model</h2>
+        <span className="text-xs text-muted-foreground">— powers every account in the Accounts module</span>
+      </div>
+
+      <div className="flex flex-col gap-6">
           <Card>
             <CardHeader className="flex-row items-start justify-between">
               <div>
@@ -1180,73 +1260,14 @@ export function ConfigWorkspace({
               </CardContent>
             </Card>
           </div>
+      </div>
+      </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Enrichment run settings</CardTitle>
-              <CardDescription>Used to estimate cost before an enrichment run.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-end gap-6">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Indicative price per credit</Label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted-foreground">£</span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    className="h-8 w-24"
-                    placeholder="—"
-                    value={settingsDraft.indicative_price_per_credit ?? ""}
-                    disabled={savingSettings}
-                    onChange={(e) => updateSettings({ indicative_price_per_credit: e.target.value === "" ? null : Number(e.target.value) })}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Leave blank to hide the £ figure</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex-row items-start justify-between">
-              <div>
-                <CardTitle>Automatic re-pull</CardTitle>
-                <CardDescription>
-                  When enabled, every company is automatically re-enriched once its data is older than the interval
-                  below — without needing a new import.
-                </CardDescription>
-              </div>
-              <Switch
-                checked={settingsDraft.auto_repull_enabled}
-                disabled={savingSettings}
-                onCheckedChange={(v) => updateSettings({ auto_repull_enabled: v })}
-              />
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-end gap-6">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Re-pull after</Label>
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    type="number"
-                    min={1}
-                    className="h-8 w-20"
-                    value={settingsDraft.re_pull_after_days}
-                    disabled={savingSettings || !settingsDraft.auto_repull_enabled}
-                    onChange={(e) => updateSettings({ re_pull_after_days: Number(e.target.value) })}
-                  />
-                  <span className="text-sm text-muted-foreground">days</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-end">
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              {savingSettings && <Loader2 className="animate-spin" />}
-              Save settings
-            </Button>
-          </div>
-        </div>
+      <div className="flex justify-end">
+        <Button onClick={saveSettings} disabled={savingSettings}>
+          {savingSettings && <Loader2 className="animate-spin" />}
+          Save settings
+        </Button>
       </div>
     </div>
   );
