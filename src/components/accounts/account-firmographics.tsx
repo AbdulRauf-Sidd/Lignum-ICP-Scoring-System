@@ -25,7 +25,7 @@ export function AccountFirmographics({ data }: { data: AccountFirmographicsData 
     { label: "Sites", value: data ? formatNumber(data.numberOfSites) : null },
     { label: "HQ", value: data?.hq ?? null },
     { label: "Founded", value: data?.foundedYear ? String(data.foundedYear) : null },
-    { label: "Credit", value: data && data.creditRating !== null ? `${data.creditRating}/100` : null },
+    { label: "Credit", value: data && data.creditRating !== null ? `${Math.round(data.creditRating)}/100` : null },
     { label: "Credit limit", value: data ? formatUsdCompact(data.creditLimit) : null },
     { label: "Risk", value: data ? riskLabel(data) : null },
     { label: "Ownership", value: data?.ownership ?? null },

@@ -389,7 +389,7 @@ export function AccountsList({
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD")}
+                      {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD", 0)}
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>

@@ -35,15 +35,19 @@ export function formatUsd(value: number | null): string {
 
 // Falls back to a plain grouped number when there's no known currency code
 // (or Intl doesn't recognize it) — safer than guessing a currency.
-export function formatCurrency(value: number | null, code: string | null): string {
+// `fractionDigits` sets both min and max, so it also strips a currency's
+// default trailing ".00" rather than just capping decimals at 2.
+export function formatCurrency(value: number | null, code: string | null, fractionDigits = 2): string {
   if (value === null) return "—";
-  const plain = () => new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 }).format(value);
+  const plain = () =>
+    new Intl.NumberFormat("en-GB", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits }).format(value);
   if (!code) return plain();
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: code,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     }).format(value);
   } catch {
     return plain();
@@ -58,9 +62,9 @@ export interface CurrencyAmount {
 // A sum spanning placements in different currencies is kept as separate
 // per-currency totals rather than added together — combining them into one
 // number would misrepresent the total (no conversion happens anywhere here).
-export function formatMultiCurrency(amounts: CurrencyAmount[]): string {
+export function formatMultiCurrency(amounts: CurrencyAmount[], fractionDigits = 2): string {
   if (amounts.length === 0) return "—";
-  return amounts.map((a) => formatCurrency(a.amount, a.code ?? "USD")).join(" + ");
+  return amounts.map((a) => formatCurrency(a.amount, a.code ?? "USD", fractionDigits)).join(" + ");
 }
 
 export function formatNumber(value: number | null): string {

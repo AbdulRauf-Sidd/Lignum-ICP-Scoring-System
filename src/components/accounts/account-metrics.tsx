@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 // the currencies in the mix isn't in it — falls back to the honest per-
 // currency breakdown rather than showing a wrong or missing number.
 function formatRevenue(metrics: AccountMetricsData): string {
-  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD") : formatMultiCurrency(metrics.revenue);
+  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD", 0) : formatMultiCurrency(metrics.revenue, 0);
 }
 
 // This dataset's real rows only ever go back a handful of years — early
@@ -141,7 +141,7 @@ export function AccountMetrics({
           value={metrics ? formatRevenue(metrics) : "—"}
           hint={
             metrics && metrics.revenueUsd !== null && metrics.revenue.length > 0
-              ? `Converted from ${formatMultiCurrency(metrics.revenue)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
+              ? `Converted from ${formatMultiCurrency(metrics.revenue, 0)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
               : "From placements in this date range"
           }
           tone="emerald"
@@ -162,14 +162,14 @@ export function AccountMetrics({
         />
         <MetricCard
           label="CV cost"
-          value={metrics ? formatCurrency(metrics.cvCost, "USD") : "—"}
+          value={metrics ? formatCurrency(metrics.cvCost, "USD", 0) : "—"}
           hint="Total CVs × CV cost, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
           label="Interview cost"
-          value={metrics ? formatCurrency(metrics.interviewCost, "USD") : "—"}
+          value={metrics ? formatCurrency(metrics.interviewCost, "USD", 0) : "—"}
           hint="First interviews × interview cost, this date range"
           tone="teal"
           icon={Calculator}
