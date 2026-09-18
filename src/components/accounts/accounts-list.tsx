@@ -11,12 +11,30 @@ import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { AccountListItem } from "@/lib/data/accounts";
 import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
-type SortKey = "name" | "revenue";
+type SortKey = "name" | "value";
+
+// Which figure the 3rd table column (and its filter/sort) shows right now —
+// everything else in the table (Company, Owner, Updated, search, owner
+// filter, date filter, stat tiles) stays the same across views.
+type MetricView = "revenue" | "cvCost" | "interviewCost";
+
+const METRIC_VIEW_LABELS: Record<MetricView, string> = {
+  revenue: "Revenue",
+  cvCost: "CV Cost",
+  interviewCost: "Interview Cost",
+};
+
+function metricValue(a: AccountListItem, view: MetricView): number | null {
+  if (view === "revenue") return a.totalRevenue;
+  if (view === "cvCost") return a.cvCost;
+  return a.interviewCost;
+}
 
 const UNASSIGNED = "Unassigned";
 const PAGE_SIZE = 20;
@@ -49,11 +67,11 @@ function StatTile({ label, value, tone }: { label: string; value: number | strin
   );
 }
 
-// ---- Revenue filter ----
+// ---- Metric (Revenue / CV Cost / Interview Cost) filter ----
 
-type RevenueOp = "any" | "gt" | "lt" | "eq" | "between";
+type MetricOp = "any" | "gt" | "lt" | "eq" | "between";
 
-const REVENUE_OP_LABELS: Record<RevenueOp, string> = {
+const METRIC_OP_LABELS: Record<MetricOp, string> = {
   any: "Any",
   gt: "Greater than",
   lt: "Less than",
@@ -88,11 +106,23 @@ export function AccountsList({
   const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
   const [customStart, setCustomStart] = React.useState("");
   const [customEnd, setCustomEnd] = React.useState("");
-  const [revenueOp, setRevenueOp] = React.useState<RevenueOp>("any");
-  const [revenueValue, setRevenueValue] = React.useState("");
-  const [revenueValue2, setRevenueValue2] = React.useState("");
+  const [view, setView] = React.useState<MetricView>("revenue");
+  const [metricOp, setMetricOp] = React.useState<MetricOp>("any");
+  const [metricFilterValue, setMetricFilterValue] = React.useState("");
+  const [metricFilterValue2, setMetricFilterValue2] = React.useState("");
   const [sortBy, setSortBy] = React.useState<SortKey>("name");
   const [page, setPage] = React.useState(1);
+
+  // A threshold tied to one metric's scale (e.g. revenue > 100,000) doesn't
+  // carry meaning to another (CV cost is a very different scale) — clear it
+  // rather than silently reinterpreting the number against the new metric.
+  function updateView(next: MetricView) {
+    setView(next);
+    setMetricOp("any");
+    setMetricFilterValue("");
+    setMetricFilterValue2("");
+    setPage(1);
+  }
 
   const ownerOptions = React.useMemo(() => {
     const named = Array.from(new Set(accounts.map((a) => a.ownedBy).filter((o): o is string => !!o))).sort();
@@ -103,8 +133,8 @@ export function AccountsList({
   const owners = new Set(accounts.map((a) => a.ownedBy).filter(Boolean)).size;
 
   const dateRange = datePresetRange(datePreset, customStart, customEnd);
-  const revenueValueNum = Number(revenueValue);
-  const revenueValue2Num = Number(revenueValue2);
+  const metricValueNum = Number(metricFilterValue);
+  const metricValue2Num = Number(metricFilterValue2);
 
   const filtered = accounts
     .filter((a) => selectedOwners.size === 0 || selectedOwners.has(a.ownedBy ?? UNASSIGNED))
@@ -116,21 +146,22 @@ export function AccountsList({
       return true;
     })
     .filter((a) => {
-      if (revenueOp === "any") return true;
-      // Revenue not on file is neither "greater than" nor "less than" anything
-      // knowable — excluded from every operator rather than treated as $0.
-      if (a.totalRevenue === null) return false;
-      if (revenueOp === "gt") return Number.isFinite(revenueValueNum) ? a.totalRevenue > revenueValueNum : true;
-      if (revenueOp === "lt") return Number.isFinite(revenueValueNum) ? a.totalRevenue < revenueValueNum : true;
-      if (revenueOp === "eq") return Number.isFinite(revenueValueNum) ? a.totalRevenue === revenueValueNum : true;
+      if (metricOp === "any") return true;
+      const value = metricValue(a, view);
+      // Not on file is neither "greater than" nor "less than" anything
+      // knowable — excluded from every operator rather than treated as 0.
+      if (value === null) return false;
+      if (metricOp === "gt") return Number.isFinite(metricValueNum) ? value > metricValueNum : true;
+      if (metricOp === "lt") return Number.isFinite(metricValueNum) ? value < metricValueNum : true;
+      if (metricOp === "eq") return Number.isFinite(metricValueNum) ? value === metricValueNum : true;
       // between
-      if (!Number.isFinite(revenueValueNum) || !Number.isFinite(revenueValue2Num)) return true;
-      const lo = Math.min(revenueValueNum, revenueValue2Num);
-      const hi = Math.max(revenueValueNum, revenueValue2Num);
-      return a.totalRevenue >= lo && a.totalRevenue <= hi;
+      if (!Number.isFinite(metricValueNum) || !Number.isFinite(metricValue2Num)) return true;
+      const lo = Math.min(metricValueNum, metricValue2Num);
+      const hi = Math.max(metricValueNum, metricValue2Num);
+      return value >= lo && value <= hi;
     })
     .sort((a, b) => {
-      if (sortBy === "revenue") return (b.totalRevenue ?? -1) - (a.totalRevenue ?? -1);
+      if (sortBy === "value") return (metricValue(b, view) ?? -1) - (metricValue(a, view) ?? -1);
       return a.companyName.localeCompare(b.companyName);
     });
 
@@ -158,8 +189,8 @@ export function AccountsList({
     setPage(1);
   }
 
-  function updateRevenueOp(value: RevenueOp) {
-    setRevenueOp(value);
+  function updateMetricOp(value: MetricOp) {
+    setMetricOp(value);
     setPage(1);
   }
 
@@ -169,7 +200,7 @@ export function AccountsList({
   }
 
   const dateActive = datePreset !== "all_time";
-  const revenueActive = revenueOp !== "any";
+  const metricFilterActive = metricOp !== "any";
 
   return (
     <div className="flex flex-col gap-6">
@@ -178,6 +209,16 @@ export function AccountsList({
         <StatTile label="With revenue on file" value={withRevenue} tone="text-emerald-600 dark:text-emerald-400" />
         <StatTile label="Distinct owners" value={owners} tone="text-sky-600 dark:text-sky-400" />
       </div>
+
+      <Tabs value={view} onValueChange={(v) => updateView(v as MetricView)}>
+        <TabsList>
+          {(Object.entries(METRIC_VIEW_LABELS) as [MetricView, string][]).map(([value, label]) => (
+            <TabsTrigger key={value} value={value}>
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2">
@@ -274,20 +315,21 @@ export function AccountsList({
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("bg-card", revenueActive && "border-primary/50 text-primary")}>
-                Revenue{revenueActive ? ` ${REVENUE_OP_LABELS[revenueOp]}` : ""}
+              <Button variant="outline" className={cn("bg-card", metricFilterActive && "border-primary/50 text-primary")}>
+                {METRIC_VIEW_LABELS[view]}
+                {metricFilterActive ? ` ${METRIC_OP_LABELS[metricOp]}` : ""}
                 <ChevronDown className="size-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Revenue</span>
-                {revenueActive && (
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{METRIC_VIEW_LABELS[view]}</span>
+                {metricFilterActive && (
                   <button
                     onClick={() => {
-                      updateRevenueOp("any");
-                      setRevenueValue("");
-                      setRevenueValue2("");
+                      updateMetricOp("any");
+                      setMetricFilterValue("");
+                      setMetricFilterValue2("");
                     }}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
@@ -295,41 +337,41 @@ export function AccountsList({
                   </button>
                 )}
               </div>
-              <Select value={revenueOp} onValueChange={(v) => updateRevenueOp(v as RevenueOp)}>
+              <Select value={metricOp} onValueChange={(v) => updateMetricOp(v as MetricOp)}>
                 <SelectTrigger className="w-full bg-card">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.entries(REVENUE_OP_LABELS) as [RevenueOp, string][]).map(([value, label]) => (
+                  {(Object.entries(METRIC_OP_LABELS) as [MetricOp, string][]).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {revenueOp !== "any" && (
+              {metricOp !== "any" && (
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
                     inputMode="decimal"
                     placeholder="$"
-                    value={revenueValue}
+                    value={metricFilterValue}
                     onChange={(e) => {
-                      setRevenueValue(e.target.value);
+                      setMetricFilterValue(e.target.value);
                       setPage(1);
                     }}
                     className="bg-card"
                   />
-                  {revenueOp === "between" && (
+                  {metricOp === "between" && (
                     <>
                       <span className="text-sm text-muted-foreground">and</span>
                       <Input
                         type="number"
                         inputMode="decimal"
                         placeholder="$"
-                        value={revenueValue2}
+                        value={metricFilterValue2}
                         onChange={(e) => {
-                          setRevenueValue2(e.target.value);
+                          setMetricFilterValue2(e.target.value);
                           setPage(1);
                         }}
                         className="bg-card"
@@ -347,7 +389,7 @@ export function AccountsList({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="name">Sort: Name</SelectItem>
-              <SelectItem value="revenue">Sort: Revenue</SelectItem>
+              <SelectItem value="value">Sort: {METRIC_VIEW_LABELS[view]}</SelectItem>
             </SelectContent>
           </Select>
           <span className="ml-auto text-sm text-muted-foreground">
@@ -364,7 +406,7 @@ export function AccountsList({
                 <TableRow>
                   <TableHead>Company</TableHead>
                   <TableHead>Owner</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">{METRIC_VIEW_LABELS[view]}</TableHead>
                   <TableHead className="text-right">Updated</TableHead>
                   <TableHead className="w-8" />
                 </TableRow>
@@ -389,7 +431,7 @@ export function AccountsList({
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD", 0)}
+                      {formatCurrency(metricValue(a, view), "USD", 0)}
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>

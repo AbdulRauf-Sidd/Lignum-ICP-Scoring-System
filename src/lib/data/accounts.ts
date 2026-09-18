@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { FieldSource } from "@/lib/types";
 import { convertToUsd, getUsdExchangeRates } from "@/lib/exchange-rates";
+import { getModelSettings } from "@/lib/data/model-settings";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -23,6 +24,11 @@ export interface AccountListItem {
   ownedBy: string | null;
   totalRevenue: number | null;
   revenueCurrencyCode: string | null;
+  // totalCvs * model_settings.cv_cost / totalInterviews * .interview_cost,
+  // lifetime (not date-scoped) — mirrors how totalRevenue above is a
+  // lifetime total too. Null when that cost isn't configured.
+  cvCost: number | null;
+  interviewCost: number | null;
   updatedAt: string;
 }
 
@@ -80,6 +86,54 @@ function calculatePlacementRevenue(row: AccountListPlacementRow): number | null 
   return null;
 }
 
+// Mirrors getAccountMetrics' CV/first-interview counting (actions.ts) —
+// same activity keys, same (job, person) dedupe — just grouped by company
+// across every account at once instead of scoped to one, since the list
+// page shows every account in a single table.
+const CV_ACTIVITY_KEY = "submitted";
+const FIRST_INTERVIEW_ACTIVITY_KEYS = ["client_interview", "moved_to_1st_stage_interviews"];
+const EVENT_PAGE_SIZE = 1_000;
+
+interface AccountListEventRow {
+  company_id: number;
+  job_id: number;
+  person_id: number;
+  activity_key: string;
+}
+
+async function fetchCvInterviewEventRows(supabase: ReturnType<typeof getSupabaseServerClient>): Promise<AccountListEventRow[]> {
+  const allRows: AccountListEventRow[] = [];
+  for (let offset = 0; ; offset += EVENT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("active_accounts_jobs_candidates_events")
+      .select("company_id, job_id, person_id, activity_key")
+      .in("activity_key", [CV_ACTIVITY_KEY, ...FIRST_INTERVIEW_ACTIVITY_KEYS])
+      .order("event_id", { ascending: true })
+      .range(offset, offset + EVENT_PAGE_SIZE - 1);
+    if (error) throw new Error(`Failed to load candidate events: ${error.message}`);
+
+    const page = (data ?? []) as AccountListEventRow[];
+    allRows.push(...page);
+    if (page.length < EVENT_PAGE_SIZE) return allRows;
+  }
+}
+
+// A re-sent CV or duplicate status log shouldn't inflate the count, but the
+// same activity for a different job is a separate submission — dedupe key
+// is (job, person), same as the single-account version.
+function countEventsByCompany(rows: AccountListEventRow[], activityKeys: string[]): Map<number, number> {
+  const seenByCompany = new Map<number, Set<string>>();
+  for (const r of rows) {
+    if (!activityKeys.includes(r.activity_key)) continue;
+    const seen = seenByCompany.get(r.company_id) ?? new Set<string>();
+    seen.add(`${r.job_id}:${r.person_id}`);
+    seenByCompany.set(r.company_id, seen);
+  }
+  const result = new Map<number, number>();
+  for (const [companyId, seen] of seenByCompany) result.set(companyId, seen.size);
+  return result;
+}
+
 export async function getAccountsList(search?: string): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
   const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
@@ -122,11 +176,13 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, tierJobRows, placementRows, { rates }] = await Promise.all([
+  const [{ data, error }, tierJobRows, placementRows, { rates }, eventRows, modelSettings] = await Promise.all([
     accountsQuery,
     fetchTierJobRows(),
     fetchPlacementRows(),
     getUsdExchangeRates(),
+    fetchCvInterviewEventRows(supabase),
+    getModelSettings(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
@@ -143,10 +199,18 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
     revenueByCompany.set(placement.company_id, (revenueByCompany.get(placement.company_id) ?? 0) + revenueUsd);
   }
 
+  const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
+  const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
+
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => ({
     companyId: r.company_id,
     companyName: r.company_name,
     status: r.status,
+    cvCost: modelSettings.cv_cost !== null ? (cvCountByCompany.get(r.company_id) ?? 0) * modelSettings.cv_cost : null,
+    interviewCost:
+      modelSettings.interview_cost !== null
+        ? (interviewCountByCompany.get(r.company_id) ?? 0) * modelSettings.interview_cost
+        : null,
     ownedBy: r.owned_by,
     totalRevenue: revenueByCompany.get(r.company_id) ?? 0,
     revenueCurrencyCode: "USD",
