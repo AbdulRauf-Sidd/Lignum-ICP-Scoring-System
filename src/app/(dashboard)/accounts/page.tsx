@@ -20,8 +20,9 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
   await requireAdmin();
   const params = await searchParams;
   const companyParam = Array.isArray(params.company) ? params.company[0] : params.company;
+  const searchParam = Array.isArray(params.q) ? params.q[0] : params.q;
 
-  const accounts = await getAccountsList();
+  const accounts = await getAccountsList(searchParam);
   const selectedCompanyId = companyParam ? Number(companyParam) : null;
 
   const [header, jobs, qualitative, talentInsights, healthWeights] = selectedCompanyId
@@ -49,6 +50,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
       <PageHeader title="Accounts" description="Company records synced from Loxo - jobs, candidates and placements." />
       <AccountsWorkspace
         accounts={accounts}
+        initialSearch={searchParam ?? ""}
         selectedCompanyId={selectedCompanyId}
         header={header}
         jobs={jobs}

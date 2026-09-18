@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,9 +61,29 @@ const REVENUE_OP_LABELS: Record<RevenueOp, string> = {
   between: "Between",
 };
 
-export function AccountsList({ accounts, onNavigate }: { accounts: AccountListItem[]; onNavigate: () => void }) {
+export function AccountsList({
+  accounts,
+  initialSearch,
+  onNavigate,
+}: {
+  accounts: AccountListItem[];
+  initialSearch: string;
+  onNavigate: () => void;
+}) {
   const router = useRouter();
-  const [search, setSearch] = React.useState("");
+  const pathname = usePathname();
+  const [search, setSearch] = React.useState(initialSearch);
+
+  // Search runs server-side (name match happens in the Supabase query, not
+  // client-side filtering below) -- debounced so we're not re-fetching the
+  // whole list on every keystroke.
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      const query = search ? `?q=${encodeURIComponent(search)}` : "";
+      router.replace(`${pathname}${query}`, { scroll: false });
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [search, router, pathname]);
   const [selectedOwners, setSelectedOwners] = React.useState<Set<string>>(new Set());
   const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
   const [customStart, setCustomStart] = React.useState("");
@@ -109,7 +129,6 @@ export function AccountsList({ accounts, onNavigate }: { accounts: AccountListIt
       const hi = Math.max(revenueValueNum, revenueValue2Num);
       return a.totalRevenue >= lo && a.totalRevenue <= hi;
     })
-    .filter((a) => a.companyName.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => {
       if (sortBy === "revenue") return (b.totalRevenue ?? -1) - (a.totalRevenue ?? -1);
       return a.companyName.localeCompare(b.companyName);

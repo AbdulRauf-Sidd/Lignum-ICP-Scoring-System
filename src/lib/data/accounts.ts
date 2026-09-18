@@ -80,7 +80,7 @@ function calculatePlacementRevenue(row: AccountListPlacementRow): number | null 
   return null;
 }
 
-export async function getAccountsList(): Promise<AccountListItem[]> {
+export async function getAccountsList(search?: string): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
   const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
     const allRows: AccountListJobRow[] = [];
@@ -114,11 +114,16 @@ export async function getAccountsList(): Promise<AccountListItem[]> {
     }
   };
 
+  let accountsQuery = supabase
+    .from("active_accounts")
+    .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
+    .order("company_name");
+  if (search) {
+    accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
+  }
+
   const [{ data, error }, tierJobRows, placementRows, { rates }] = await Promise.all([
-    supabase
-      .from("active_accounts")
-      .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
-      .order("company_name"),
+    accountsQuery,
     fetchTierJobRows(),
     fetchPlacementRows(),
     getUsdExchangeRates(),
