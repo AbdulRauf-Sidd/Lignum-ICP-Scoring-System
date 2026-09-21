@@ -14,6 +14,8 @@ import { AccountFirmographics } from "@/components/accounts/account-firmographic
 import { statusMeta } from "@/components/accounts/status-meta";
 import { formatDateTime } from "@/lib/format";
 import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
+import type { Company } from "@/lib/types";
+import type { ContactRow } from "@/lib/data/contacts";
 import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights, AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
 import { type DatePreset, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,8 @@ export function AccountsWorkspace({
   talentInsights,
   healthWeights,
   firmographics,
+  enrichmentCompany,
+  enrichmentContacts,
 }: {
   accounts: AccountListItem[];
   initialSearch: string;
@@ -46,6 +50,8 @@ export function AccountsWorkspace({
   talentInsights: TalentInsights;
   healthWeights: HealthWeights;
   firmographics: AccountFirmographicsData | null;
+  enrichmentCompany: Company | null;
+  enrichmentContacts: ContactRow[];
 }) {
   const [navigating, setNavigating] = React.useState(false);
 
@@ -84,6 +90,8 @@ export function AccountsWorkspace({
             talentInsights={talentInsights}
             healthWeights={healthWeights}
             firmographics={firmographics}
+            enrichmentCompany={enrichmentCompany}
+            enrichmentContacts={enrichmentContacts}
             onNavigate={() => setNavigating(true)}
           />
         )}
@@ -99,6 +107,8 @@ function AccountDetail({
   talentInsights,
   healthWeights,
   firmographics,
+  enrichmentCompany,
+  enrichmentContacts,
   onNavigate,
 }: {
   header: AccountHeader;
@@ -107,6 +117,8 @@ function AccountDetail({
   talentInsights: TalentInsights;
   healthWeights: HealthWeights;
   firmographics: AccountFirmographicsData | null;
+  enrichmentCompany: Company | null;
+  enrichmentContacts: ContactRow[];
   onNavigate: () => void;
 }) {
   const meta = statusMeta(header.status);
@@ -187,7 +199,7 @@ function AccountDetail({
           </CardContent>
         </Card>
 
-        <AccountFirmographics data={firmographics} />
+        <AccountFirmographics data={firmographics} company={enrichmentCompany} contacts={enrichmentContacts} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <AccountScorecard companyId={header.companyId} ratings={qualitativeState} onRatingsChange={setQualitativeState} />

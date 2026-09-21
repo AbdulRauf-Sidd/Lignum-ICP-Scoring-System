@@ -479,6 +479,9 @@ export async function getHealthWeights(): Promise<HealthWeights> {
 // stored inconsistently (some rows keep a "www." prefix, some don't), so
 // both tables are normalized to a bare hostname before comparing.
 export interface AccountFirmographics {
+  // The matching prospecting `companies` row — used to load the rest of the
+  // enrichment data (score, ICP, contacts) for the account detail page.
+  companyRowId: string;
   revenueUsd: number | null;
   revenueSource: FieldSource | null;
   headcount: number | null;
@@ -510,6 +513,7 @@ function extractDomain(url: string | null): string | null {
 }
 
 interface FirmographicsRow {
+  id: string;
   revenue_usd: number | null;
   revenue_source: FieldSource | null;
   headcount: number | null;
@@ -538,7 +542,7 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
   const { data, error } = await supabase
     .from("companies")
     .select(
-      "revenue_usd, revenue_source, headcount, headcount_source, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership, creditsafe_credit_limit",
+      "id, revenue_usd, revenue_source, headcount, headcount_source, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership, creditsafe_credit_limit",
     )
     .in("domain", [domain, `www.${domain}`])
     .order("last_enriched_at", { ascending: false, nullsFirst: false })
@@ -551,6 +555,7 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
   const r = data as FirmographicsRow;
 
   return {
+    companyRowId: r.id,
     revenueUsd: r.revenue_usd,
     revenueSource: r.revenue_source,
     headcount: r.headcount,
