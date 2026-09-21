@@ -1,7 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import type { FieldSource } from "@/lib/types";
+import type { FieldSource, MatchedAccount } from "@/lib/types";
+import { normalizeDomain } from "@/lib/domain";
 import { convertToUsd, getUsdExchangeRates } from "@/lib/exchange-rates";
-import { getModelSettings } from "@/lib/data/model-settings";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -24,9 +24,9 @@ export interface AccountListItem {
   ownedBy: string | null;
   totalRevenue: number | null;
   revenueCurrencyCode: string | null;
-  // totalCvs * model_settings.cv_cost / totalInterviews * .interview_cost,
+  // totalRevenue / total CVs and / total first interviews,
   // lifetime (not date-scoped) — mirrors how totalRevenue above is a
-  // lifetime total too. Null when that cost isn't configured.
+  // lifetime total too. Null when there are none.
   cvCost: number | null;
   interviewCost: number | null;
   updatedAt: string;
@@ -176,13 +176,12 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, tierJobRows, placementRows, { rates }, eventRows, modelSettings] = await Promise.all([
+  const [{ data, error }, tierJobRows, placementRows, { rates }, eventRows] = await Promise.all([
     accountsQuery,
     fetchTierJobRows(),
     fetchPlacementRows(),
     getUsdExchangeRates(),
     fetchCvInterviewEventRows(supabase),
-    getModelSettings(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
@@ -202,20 +201,23 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
   const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
 
-  return ((data ?? []) as unknown as AccountListRow[]).map((r) => ({
-    companyId: r.company_id,
-    companyName: r.company_name,
-    status: r.status,
-    cvCost: modelSettings.cv_cost !== null ? (cvCountByCompany.get(r.company_id) ?? 0) * modelSettings.cv_cost : null,
-    interviewCost:
-      modelSettings.interview_cost !== null
-        ? (interviewCountByCompany.get(r.company_id) ?? 0) * modelSettings.interview_cost
-        : null,
-    ownedBy: r.owned_by,
-    totalRevenue: revenueByCompany.get(r.company_id) ?? 0,
-    revenueCurrencyCode: "USD",
-    updatedAt: r.updated_at,
-  }));
+  return ((data ?? []) as unknown as AccountListRow[]).map((r) => {
+    const totalRevenue = revenueByCompany.get(r.company_id) ?? 0;
+    const cvCount = cvCountByCompany.get(r.company_id) ?? 0;
+    const interviewCount = interviewCountByCompany.get(r.company_id) ?? 0;
+    return {
+      companyId: r.company_id,
+      companyName: r.company_name,
+      status: r.status,
+      // Revenue per CV / per first interview — null when there are none.
+      cvCost: cvCount > 0 ? totalRevenue / cvCount : null,
+      interviewCost: interviewCount > 0 ? totalRevenue / interviewCount : null,
+      ownedBy: r.owned_by,
+      totalRevenue,
+      revenueCurrencyCode: "USD",
+      updatedAt: r.updated_at,
+    };
+  });
 }
 
 interface AccountHeaderRow {
@@ -565,4 +567,43 @@ export async function getAccountJobs(companyId: number): Promise<AccountJob[]> {
     feeTypeKey: r.fee_type?.fee_type_key ?? null,
     feeCurrencyCode: r.fee_currency?.code ?? null,
   }));
+}
+
+// Accounts whose company_url matches any of the given domains, keyed by the
+// normalized domain. n8n decides which companies are matches; this only
+// fetches the account side so triage can show both records.
+export async function getAccountsMatchingDomains(domains: string[]): Promise<Map<string, MatchedAccount[]>> {
+  const wanted = new Set(domains.map(normalizeDomain).filter((d) => /^[a-z0-9.-]+$/.test(d)));
+  const result = new Map<string, MatchedAccount[]>();
+  if (wanted.size === 0) return result;
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("active_accounts")
+    .select("company_id, company_name, company_url, status, owned_by")
+    .or([...wanted].map((d) => `company_url.ilike.%${d}%`).join(","));
+  if (error) throw new Error(`Failed to load matching accounts: ${error.message}`);
+
+  for (const row of (data ?? []) as {
+    company_id: number;
+    company_name: string;
+    company_url: string | null;
+    status: string;
+    owned_by: string | null;
+  }[]) {
+    if (!row.company_url) continue;
+    const key = normalizeDomain(row.company_url);
+    if (!wanted.has(key)) continue;
+    const list = result.get(key) ?? [];
+    list.push({
+      companyId: row.company_id,
+      companyName: row.company_name,
+      companyUrl: row.company_url,
+      domain: key,
+      status: row.status,
+      ownedBy: row.owned_by,
+    });
+    result.set(key, list);
+  }
+  return result;
 }

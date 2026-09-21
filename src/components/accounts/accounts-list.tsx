@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,17 +11,14 @@ import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { AccountListItem } from "@/lib/data/accounts";
 import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
-type SortKey = "name" | "value";
+type SortKey = "name" | "owner" | "revenue" | "cvCost" | "interviewCost" | "updated";
 
-// Which figure the 3rd table column (and its filter/sort) shows right now —
-// everything else in the table (Company, Owner, Updated, search, owner
-// filter, date filter, stat tiles) stays the same across views.
+// Which figure the numeric filter applies to.
 type MetricView = "revenue" | "cvCost" | "interviewCost";
 
 const METRIC_VIEW_LABELS: Record<MetricView, string> = {
@@ -34,6 +31,36 @@ function metricValue(a: AccountListItem, view: MetricView): number | null {
   if (view === "revenue") return a.totalRevenue;
   if (view === "cvCost") return a.cvCost;
   return a.interviewCost;
+}
+
+function SortableHead({
+  label,
+  active,
+  desc,
+  onClick,
+  className,
+}: {
+  label: string;
+  active: boolean;
+  desc: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <TableHead className={className}>
+      <button
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          active && "text-foreground",
+          className?.includes("text-right") && "flex-row-reverse",
+        )}
+      >
+        {label}
+        <ArrowUpDown className={cn("size-3 transition-transform", active && !desc && "rotate-180")} />
+      </button>
+    </TableHead>
+  );
 }
 
 const UNASSIGNED = "Unassigned";
@@ -111,7 +138,19 @@ export function AccountsList({
   const [metricFilterValue, setMetricFilterValue] = React.useState("");
   const [metricFilterValue2, setMetricFilterValue2] = React.useState("");
   const [sortBy, setSortBy] = React.useState<SortKey>("name");
+  const [sortDesc, setSortDesc] = React.useState(false);
   const [page, setPage] = React.useState(1);
+
+  // Text columns start A→Z, numeric/date columns start highest/newest first.
+  function toggleSort(key: SortKey) {
+    if (sortBy === key) {
+      setSortDesc((d) => !d);
+    } else {
+      setSortBy(key);
+      setSortDesc(key !== "name" && key !== "owner");
+    }
+    setPage(1);
+  }
 
   // A threshold tied to one metric's scale (e.g. revenue > 100,000) doesn't
   // carry meaning to another (CV cost is a very different scale) — clear it
@@ -161,8 +200,20 @@ export function AccountsList({
       return value >= lo && value <= hi;
     })
     .sort((a, b) => {
-      if (sortBy === "value") return (metricValue(b, view) ?? -1) - (metricValue(a, view) ?? -1);
-      return a.companyName.localeCompare(b.companyName);
+      let cmp = 0;
+      if (sortBy === "name") cmp = a.companyName.localeCompare(b.companyName);
+      else if (sortBy === "owner") cmp = (a.ownedBy ?? UNASSIGNED).localeCompare(b.ownedBy ?? UNASSIGNED);
+      else if (sortBy === "updated") cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      else {
+        // Not on file sorts below every real figure in either direction.
+        const av = metricValue(a, sortBy);
+        const bv = metricValue(b, sortBy);
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        cmp = av - bv;
+      }
+      return sortDesc ? -cmp : cmp;
     });
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -194,11 +245,6 @@ export function AccountsList({
     setPage(1);
   }
 
-  function updateSortBy(value: SortKey) {
-    setSortBy(value);
-    setPage(1);
-  }
-
   const dateActive = datePreset !== "all_time";
   const metricFilterActive = metricOp !== "any";
 
@@ -209,16 +255,6 @@ export function AccountsList({
         <StatTile label="With revenue on file" value={withRevenue} tone="text-emerald-600 dark:text-emerald-400" />
         <StatTile label="Distinct owners" value={owners} tone="text-sky-600 dark:text-sky-400" />
       </div>
-
-      <Tabs value={view} onValueChange={(v) => updateView(v as MetricView)}>
-        <TabsList>
-          {(Object.entries(METRIC_VIEW_LABELS) as [MetricView, string][]).map(([value, label]) => (
-            <TabsTrigger key={value} value={value}>
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2">
@@ -337,6 +373,18 @@ export function AccountsList({
                   </button>
                 )}
               </div>
+              <Select value={view} onValueChange={(v) => updateView(v as MetricView)}>
+                <SelectTrigger className="w-full bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(METRIC_VIEW_LABELS) as [MetricView, string][]).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={metricOp} onValueChange={(v) => updateMetricOp(v as MetricOp)}>
                 <SelectTrigger className="w-full bg-card">
                   <SelectValue />
@@ -383,15 +431,6 @@ export function AccountsList({
             </PopoverContent>
           </Popover>
 
-          <Select value={sortBy} onValueChange={(v) => updateSortBy(v as SortKey)}>
-            <SelectTrigger className="w-40 bg-card">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Sort: Name</SelectItem>
-              <SelectItem value="value">Sort: {METRIC_VIEW_LABELS[view]}</SelectItem>
-            </SelectContent>
-          </Select>
           <span className="ml-auto text-sm text-muted-foreground">
             {filtered.length} of {accounts.length}
           </span>
@@ -404,17 +443,19 @@ export function AccountsList({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Owner</TableHead>
-                  <TableHead className="text-right">{METRIC_VIEW_LABELS[view]}</TableHead>
-                  <TableHead className="text-right">Updated</TableHead>
+                  <SortableHead label="Company" active={sortBy === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
+                  <SortableHead label="Owner" active={sortBy === "owner"} desc={sortDesc} onClick={() => toggleSort("owner")} />
+                  <SortableHead label="Revenue" className="text-right" active={sortBy === "revenue"} desc={sortDesc} onClick={() => toggleSort("revenue")} />
+                  <SortableHead label="CV Cost" className="text-right" active={sortBy === "cvCost"} desc={sortDesc} onClick={() => toggleSort("cvCost")} />
+                  <SortableHead label="Interview Cost" className="text-right" active={sortBy === "interviewCost"} desc={sortDesc} onClick={() => toggleSort("interviewCost")} />
+                  <SortableHead label="Updated" className="text-right" active={sortBy === "updated"} desc={sortDesc} onClick={() => toggleSort("updated")} />
                   <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paged.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       No accounts match your filters.
                     </TableCell>
                   </TableRow>
@@ -430,9 +471,9 @@ export function AccountsList({
                   >
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(metricValue(a, view), "USD", 0)}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.totalRevenue, "USD", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.cvCost, "USD", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.interviewCost, "USD", 0)}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>
                       <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />

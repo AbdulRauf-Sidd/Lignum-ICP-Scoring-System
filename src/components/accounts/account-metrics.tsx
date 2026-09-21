@@ -135,7 +135,7 @@ export function AccountMetrics({
         {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard
           label="Total revenue"
           value={metrics ? formatRevenue(metrics) : "—"}
@@ -163,16 +163,37 @@ export function AccountMetrics({
         <MetricCard
           label="CV cost"
           value={metrics ? formatCurrency(metrics.cvCost, "USD", 0) : "—"}
-          hint="Total CVs × CV cost, this date range"
+          hint="Total revenue ÷ total CVs, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
           label="Interview cost"
           value={metrics ? formatCurrency(metrics.interviewCost, "USD", 0) : "—"}
-          hint="First interviews × interview cost, this date range"
+          hint="Total revenue ÷ first interviews, this date range"
           tone="teal"
           icon={Calculator}
+        />
+        <MetricCard
+          label="Recruiter cost"
+          value={metrics ? formatCurrency(metrics.recruiterCost, "USD", 0) : "—"}
+          hint="Total CVs × CV cost (Model config)"
+          tone="sky"
+          icon={FileText}
+        />
+        <MetricCard
+          label="Account management cost"
+          value={metrics ? formatCurrency(metrics.accountManagementCost, "USD", 0) : "—"}
+          hint={`${metrics ? formatNumber(metrics.totalJobs) : "—"} jobs added × interview cost (Model config)`}
+          tone="amber"
+          icon={Calculator}
+        />
+        <MetricCard
+          label="Business cost"
+          value={metrics ? formatCurrency(metrics.businessCost, "USD", 0) : "—"}
+          hint="Recruiter cost + account management cost"
+          tone="violet"
+          icon={Banknote}
         />
       </div>
       <Badge variant="outline" className="w-fit border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">

@@ -1,6 +1,8 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
-import type { Company, ScoreCategory, CandidateEntity, CompanyStatus, Tier, MatchFlag, TriageReason, FieldSource } from "@/lib/types";
+import { getAccountsMatchingDomains } from "@/lib/data/accounts";
+import { normalizeDomain } from "@/lib/domain";
+import type { Company, MatchedAccount, ScoreCategory, CandidateEntity, CompanyStatus, Tier, MatchFlag, TriageReason, FieldSource } from "@/lib/types";
 
 // Mirrors the real `companies` table — see the n8n workflow's Supabase nodes
 // for the source of truth on these column names.
@@ -36,6 +38,7 @@ interface CompanyRow {
   hiring_event_count: number | null;
   creditsafe_risk_score: number | null;
   creditsafe_credit_limit: number | null;
+  moved_to_accounts: boolean | null;
 }
 
 // Mirrors the real `scoring_breakdown` table.
@@ -98,7 +101,11 @@ function buildOneLineReason(row: CompanyRow, breakdown: ScoreCategory[]): string
   return `Matched to ${row.icp} on ${top.label.toLowerCase()}.`;
 }
 
-function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | null): Company {
+function mapRowToCompany(
+  row: CompanyRow,
+  breakdownRow: ScoringBreakdownRow | null,
+  matchedAccounts: MatchedAccount[] = [],
+): Company {
   const scoringBreakdown = breakdownRow ? buildScoringBreakdown(breakdownRow) : [];
   return {
     id: row.id,
@@ -139,6 +146,8 @@ function mapRowToCompany(row: CompanyRow, breakdownRow: ScoringBreakdownRow | nu
     proposedSector: row.sector,
     proposedSubSector: row.sub_sector,
     oneLineReason: buildOneLineReason(row, scoringBreakdown),
+    movedToAccounts: row.moved_to_accounts,
+    matchedAccounts,
   };
 }
 
@@ -166,7 +175,10 @@ async function getLatestBreakdownsByCompanyId(
 
 export async function getScoredCompanies(search?: string): Promise<Company[]> {
   const supabase = getSupabaseServerClient();
-  let query = supabase.from("companies").select("*").eq("status", "scored").order("score", { ascending: false });
+  let query = supabase.from("companies").select("*").eq("status", "scored")
+    // null (undecided) and false both stay listed; only a confirmed move hides it.
+    .or("moved_to_accounts.is.null,moved_to_accounts.eq.false")
+    .order("score", { ascending: false });
   if (search) {
     query = query.ilike("name", `%${search}%`);
   }
@@ -313,8 +325,13 @@ export async function getTriageCompanies(): Promise<Company[]> {
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
 
   const rows = (data ?? []) as CompanyRow[];
-  const breakdowns = await getLatestBreakdownsByCompanyId(rows.map((r) => r.id));
-  return rows.map((row) => mapRowToCompany(row, breakdowns.get(row.id) ?? null));
+  const [breakdowns, accountsByDomain] = await Promise.all([
+    getLatestBreakdownsByCompanyId(rows.map((r) => r.id)),
+    getAccountsMatchingDomains(rows.filter((r) => r.triage_reason === "move_to_accounts").map((r) => r.domain)),
+  ]);
+  return rows.map((row) =>
+    mapRowToCompany(row, breakdowns.get(row.id) ?? null, accountsByDomain.get(normalizeDomain(row.domain)) ?? []),
+  );
 }
 
 export interface HomeStats {

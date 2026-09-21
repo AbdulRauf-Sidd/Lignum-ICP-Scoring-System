@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, X, MapPin, Globe, Loader2, TriangleAlert, CheckCheck, Pencil } from "lucide-react";
+import { ArrowRightLeft, Check, X, MapPin, Globe, Loader2, TriangleAlert, CheckCheck, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,16 +21,18 @@ import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
 import type { IcpProfileRow } from "@/lib/data/icp-profiles";
+import { normalizeDomain } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   approveCompany,
   rejectCompany,
   confirmEntityResolution,
+  resolveMoveToAccounts,
   rescoreAndApproveCompany,
 } from "@/app/(dashboard)/triage/actions";
 
-type Resolution = "pending" | "approved" | "rejected" | "resolving";
+type Resolution = "pending" | "approved" | "rejected" | "resolving" | "moved" | "kept";
 
 const SOURCE_LABELS: Record<string, string> = {
   creditsafe: "Creditsafe",
@@ -50,6 +52,12 @@ const MATCH_STRATEGY_LABELS: Record<string, string> = {
 // Needs the same human confirmation flow as entity_ambiguous — either several
 // candidates to pick between, or a single fallback-found candidate that still
 // wasn't corroborated by both signals together.
+// A domain match with an existing account — needs a merge yes/no, not a
+// sector/score review.
+function isMoveToAccounts(company: Company): boolean {
+  return company.triageReason === "move_to_accounts";
+}
+
 function needsEntityConfirmation(company: Company): boolean {
   return company.triageReason === "entity_ambiguous" || company.triageReason === "creditsafe_fallback_match";
 }
@@ -64,6 +72,9 @@ function getWarnings(company: Company): string[] {
   if (company.triageReason === "creditsafe_fallback_match") {
     warnings.push("Fallback match — needs confirmation");
   }
+  if (isMoveToAccounts(company)) {
+    warnings.push("Matches an existing account");
+  }
   if (company.triageReason === "low_confidence_sector") {
     warnings.push("Low classification confidence");
   }
@@ -76,7 +87,7 @@ function getWarnings(company: Company): string[] {
 // fallback-only match) always needs a human pick, and a weak/no match is worth
 // a second look before approving.
 function isFlagged(company: Company): boolean {
-  return needsEntityConfirmation(company) || company.matchFlag === "weak" || company.matchFlag === "no_match";
+  return isMoveToAccounts(company) || needsEntityConfirmation(company) || company.matchFlag === "weak" || company.matchFlag === "no_match";
 }
 
 export function TriageWorkspace({ companies, profiles }: { companies: Company[]; profiles: IcpProfileRow[] }) {
@@ -139,6 +150,7 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
     entity_ambiguous: items.filter((c) => c.triageReason === "entity_ambiguous").length,
     creditsafe_fallback_match: items.filter((c) => c.triageReason === "creditsafe_fallback_match").length,
     low_confidence_sector: items.filter((c) => c.triageReason === "low_confidence_sector").length,
+    move_to_accounts: items.filter((c) => c.triageReason === "move_to_accounts").length,
   };
 
   const unresolved = items.filter((c) => (resolutions[c.id] ?? "pending") === "pending");
@@ -225,6 +237,24 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
     }
   }
 
+  async function resolveMove(company: Company, confirmed: boolean) {
+    setPendingId(company.id);
+    try {
+      await resolveMoveToAccounts(company.id, confirmed);
+      setResolutions((prev) => ({ ...prev, [company.id]: confirmed ? "moved" : "kept" }));
+      toast(confirmed ? `${company.name} moved to accounts` : `Move cancelled for ${company.name}`, {
+        description: confirmed ? "Removed from the target list." : "Stays on the target list.",
+      });
+      router.refresh();
+    } catch (err) {
+      toast.error(confirmed ? "Couldn't confirm the move" : "Couldn't cancel the move", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   async function bulkApproveClear() {
     setBulkApproving(true);
     try {
@@ -264,13 +294,14 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {(
           [
             { key: "all" as const, label: "Total in triage", count: counts.all },
             { key: "entity_ambiguous" as const, label: "Entity ambiguous", count: counts.entity_ambiguous },
             { key: "creditsafe_fallback_match" as const, label: "Fallback match", count: counts.creditsafe_fallback_match },
             { key: "low_confidence_sector" as const, label: "Low-confidence sector", count: counts.low_confidence_sector },
+            { key: "move_to_accounts" as const, label: "Move to accounts", count: counts.move_to_accounts },
           ]
         ).map((tile) => (
           <button
@@ -310,6 +341,7 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
               onApprove={() => approve(c)}
               onReject={() => reject(c)}
               onConfirmEntity={() => confirmEntity(c)}
+              onResolveMove={(confirmed) => resolveMove(c, confirmed)}
               isPending={pendingId === c.id}
               editing={editingIds.has(c.id)}
               onToggleEdit={() => toggleEditing(c.id)}
@@ -332,6 +364,7 @@ function TriageCard({
   onApprove,
   onReject,
   onConfirmEntity,
+  onResolveMove,
   isPending,
   editing,
   onToggleEdit,
@@ -346,6 +379,7 @@ function TriageCard({
   onApprove: () => void;
   onReject: () => void;
   onConfirmEntity: () => void;
+  onResolveMove: (confirmed: boolean) => void;
   isPending: boolean;
   editing: boolean;
   onToggleEdit: () => void;
@@ -433,13 +467,60 @@ function TriageCard({
             <Loader2 className="size-3 animate-spin" /> Reprocessing — will return to triage if it still needs review
           </Badge>
         )}
+        {resolution === "moved" && (
+          <Badge variant="outline" className="w-fit border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            Moved to accounts — removed from the target list
+          </Badge>
+        )}
+        {resolution === "kept" && (
+          <Badge variant="outline" className="w-fit border-transparent bg-muted text-muted-foreground">
+            Move cancelled — stays on the target list
+          </Badge>
+        )}
         {resolution === "rejected" && (
           <Badge variant="outline" className="w-fit border-transparent bg-destructive/10 text-destructive">
             Rejected
           </Badge>
         )}
 
-        {!resolved && editing && needsEntityConfirmation(company) && (
+        {!resolved && isMoveToAccounts(company) && (
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
+            <div className="rounded-lg border px-3 py-2.5">
+              <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Target list company</p>
+              <p className="mt-1 text-sm font-medium">{company.name}</p>
+              <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                <Globe className="size-3" /> {normalizeDomain(company.domain)}
+              </p>
+            </div>
+            <div className="flex flex-col items-center justify-center gap-1 text-muted-foreground">
+              <ArrowRightLeft className="size-4" />
+              <span className="text-[10px] font-medium tracking-wider uppercase">Same domain</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {company.matchedAccounts.length === 0 ? (
+                <div className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
+                  No matching account found for {normalizeDomain(company.domain)}.
+                </div>
+              ) : (
+                company.matchedAccounts.map((acc) => (
+                  <div key={acc.companyId} className="rounded-lg border px-3 py-2.5">
+                    <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Existing account</p>
+                    <p className="mt-1 text-sm font-medium">{acc.companyName}</p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Globe className="size-3" /> {acc.domain || "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {acc.status}
+                      {acc.ownedBy ? ` · ${acc.ownedBy}` : ""}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {!resolved && editing && !isMoveToAccounts(company) && needsEntityConfirmation(company) && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Which company is this?</p>
             {company.triageReason === "creditsafe_fallback_match" && company.creditsafeMatchStrategy && (
@@ -491,7 +572,7 @@ function TriageCard({
           </div>
         )}
 
-        {!resolved && editing && !needsEntityConfirmation(company) && (
+        {!resolved && editing && !isMoveToAccounts(company) && !needsEntityConfirmation(company) && (
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -552,7 +633,18 @@ function TriageCard({
           </div>
         )}
 
-        {!resolved && (
+        {!resolved && isMoveToAccounts(company) && (
+          <div className="flex items-center gap-2 border-t pt-4">
+            <Button size="sm" onClick={() => onResolveMove(true)} disabled={isPending}>
+              {isPending ? <Loader2 className="animate-spin" /> : <Check />} Confirm move
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onResolveMove(false)} disabled={isPending}>
+              <X /> Cancel
+            </Button>
+          </div>
+        )}
+
+        {!resolved && !isMoveToAccounts(company) && (
           <div className="flex items-center justify-between border-t pt-4">
             <div className="flex items-center gap-2">
               {needsEntityConfirmation(company) ? (
