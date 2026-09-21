@@ -510,8 +510,7 @@ function TriageCard({
                       <Globe className="size-3" /> {acc.domain || "—"}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {acc.status}
-                      {acc.ownedBy ? ` · ${acc.ownedBy}` : ""}
+                      Account owner: <span className="font-medium text-foreground">{acc.ownedBy ?? "Unassigned"}</span>
                     </p>
                   </div>
                 ))
