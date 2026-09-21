@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -139,26 +139,48 @@ export function AccountsList({
   // CVs / interviews scoped to the range, happen in the Supabase queries) —
   // synced to the URL. Search is debounced so we're not re-fetching the whole
   // list on every keystroke; a date change goes through quickly.
+  const query = React.useMemo(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (datePreset !== "all_time") params.set("range", datePreset);
+    if (datePreset === "custom") {
+      if (customStart) params.set("from", customStart);
+      if (customEnd) params.set("to", customEnd);
+    }
+    return params.toString();
+  }, [search, datePreset, customStart, customEnd]);
+
+  // `appliedQuery` is the URL last pushed; `dataQuery` is the one the current
+  // `accounts` were actually fetched for. They differ while a request is in
+  // flight, and `query` differs from `dataQuery` from the moment a filter
+  // changes — that whole gap is "loading".
+  const [appliedQuery, setAppliedQuery] = React.useState(query);
+  const [dataQuery, setDataQuery] = React.useState(query);
   const lastSearchRef = React.useRef(initialSearch);
   React.useEffect(() => {
+    if (query === appliedQuery) return;
     const searchChanged = search !== lastSearchRef.current;
     lastSearchRef.current = search;
     const timeout = setTimeout(
       () => {
-        const params = new URLSearchParams();
-        if (search) params.set("q", search);
-        if (datePreset !== "all_time") params.set("range", datePreset);
-        if (datePreset === "custom") {
-          if (customStart) params.set("from", customStart);
-          if (customEnd) params.set("to", customEnd);
-        }
-        const query = params.toString();
+        setAppliedQuery(query);
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
       },
       searchChanged ? 1000 : 300,
     );
     return () => clearTimeout(timeout);
-  }, [search, datePreset, customStart, customEnd, router, pathname]);
+  }, [query, appliedQuery, search, router, pathname]);
+
+  // `accounts` is a fresh array every time the server sends new data, so that
+  // (not a transition flag, which resolves early) marks the fetch as done.
+  // Adjusted during render so there's no extra visible frame.
+  const [prevAccounts, setPrevAccounts] = React.useState(accounts);
+  if (accounts !== prevAccounts) {
+    setPrevAccounts(accounts);
+    setDataQuery(appliedQuery);
+  }
+  const loading = query !== dataQuery;
+
   const [view, setView] = React.useState<MetricView>("revenue");
   const [metricOp, setMetricOp] = React.useState<MetricOp>("any");
   const [metricFilterValue, setMetricFilterValue] = React.useState("");
@@ -473,13 +495,19 @@ export function AccountsList({
           >
             <ArrowUpDown className={cn("size-3.5 transition-transform", !sortDesc && "rotate-180")} />
           </Button>
-          <span className="ml-auto text-sm text-muted-foreground">
+          <span className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+            {loading && <Loader2 className="size-4 animate-spin text-primary" aria-label="Loading" role="status" />}
             {filtered.length} of {accounts.length}
           </span>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={cn("relative transition-opacity", loading && "pointer-events-none opacity-50")}>
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-start justify-center pt-16">
+            <Loader2 className="size-7 animate-spin text-primary" aria-hidden />
+          </div>
+        )}
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
