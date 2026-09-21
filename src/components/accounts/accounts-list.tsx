@@ -18,6 +18,15 @@ import { cn } from "@/lib/utils";
 
 type SortKey = "name" | "owner" | "revenue" | "cvCost" | "interviewCost" | "updated";
 
+const SORT_LABELS: Record<SortKey, string> = {
+  name: "Company",
+  owner: "Owner",
+  revenue: "Revenue",
+  cvCost: "CV Cost",
+  interviewCost: "Interview Cost",
+  updated: "Updated",
+};
+
 // Which figure the numeric filter applies to.
 type MetricView = "revenue" | "cvCost" | "interviewCost";
 
@@ -431,6 +440,30 @@ export function AccountsList({
             </PopoverContent>
           </Popover>
 
+          <Select value={sortBy} onValueChange={(v) => {
+              if (v !== sortBy) toggleSort(v as SortKey);
+            }}>
+            <SelectTrigger className="w-48 bg-card">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  Sort: {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            className="bg-card"
+            onClick={() => setSortDesc((d) => !d)}
+            aria-label={sortDesc ? "Sorted descending" : "Sorted ascending"}
+            title={sortDesc ? "Descending" : "Ascending"}
+          >
+            <ArrowUpDown className={cn("size-3.5 transition-transform", !sortDesc && "rotate-180")} />
+          </Button>
           <span className="ml-auto text-sm text-muted-foreground">
             {filtered.length} of {accounts.length}
           </span>
