@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { AccountListItem } from "@/lib/data/accounts";
-import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
+import { type DatePreset, DATE_PRESET_LABELS } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
 type SortKey = "name" | "owner" | "revenue" | "cvCost" | "interviewCost" | "updated";
@@ -118,30 +118,47 @@ const METRIC_OP_LABELS: Record<MetricOp, string> = {
 export function AccountsList({
   accounts,
   initialSearch,
+  initialDate,
   onNavigate,
 }: {
   accounts: AccountListItem[];
   initialSearch: string;
+  initialDate: { preset: DatePreset; customStart: string; customEnd: string };
   onNavigate: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = React.useState(initialSearch);
 
-  // Search runs server-side (name match happens in the Supabase query, not
-  // client-side filtering below) -- debounced so we're not re-fetching the
-  // whole list on every keystroke.
-  React.useEffect(() => {
-    const timeout = setTimeout(() => {
-      const query = search ? `?q=${encodeURIComponent(search)}` : "";
-      router.replace(`${pathname}${query}`, { scroll: false });
-    }, 1000);
-    return () => clearTimeout(timeout);
-  }, [search, router, pathname]);
   const [selectedOwners, setSelectedOwners] = React.useState<Set<string>>(new Set());
-  const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
-  const [customStart, setCustomStart] = React.useState("");
-  const [customEnd, setCustomEnd] = React.useState("");
+  const [datePreset, setDatePreset] = React.useState<DatePreset>(initialDate.preset);
+  const [customStart, setCustomStart] = React.useState(initialDate.customStart);
+  const [customEnd, setCustomEnd] = React.useState(initialDate.customEnd);
+
+  // Search and the date range both run server-side (name match, and revenue /
+  // CVs / interviews scoped to the range, happen in the Supabase queries) —
+  // synced to the URL. Search is debounced so we're not re-fetching the whole
+  // list on every keystroke; a date change goes through quickly.
+  const lastSearchRef = React.useRef(initialSearch);
+  React.useEffect(() => {
+    const searchChanged = search !== lastSearchRef.current;
+    lastSearchRef.current = search;
+    const timeout = setTimeout(
+      () => {
+        const params = new URLSearchParams();
+        if (search) params.set("q", search);
+        if (datePreset !== "all_time") params.set("range", datePreset);
+        if (datePreset === "custom") {
+          if (customStart) params.set("from", customStart);
+          if (customEnd) params.set("to", customEnd);
+        }
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      },
+      searchChanged ? 1000 : 300,
+    );
+    return () => clearTimeout(timeout);
+  }, [search, datePreset, customStart, customEnd, router, pathname]);
   const [view, setView] = React.useState<MetricView>("revenue");
   const [metricOp, setMetricOp] = React.useState<MetricOp>("any");
   const [metricFilterValue, setMetricFilterValue] = React.useState("");
@@ -180,19 +197,11 @@ export function AccountsList({
   const withRevenue = accounts.filter((a) => a.totalRevenue !== null && a.totalRevenue > 0).length;
   const owners = new Set(accounts.map((a) => a.ownedBy).filter(Boolean)).size;
 
-  const dateRange = datePresetRange(datePreset, customStart, customEnd);
   const metricValueNum = Number(metricFilterValue);
   const metricValue2Num = Number(metricFilterValue2);
 
   const filtered = accounts
     .filter((a) => selectedOwners.size === 0 || selectedOwners.has(a.ownedBy ?? UNASSIGNED))
-    .filter((a) => {
-      if (!dateRange.start && !dateRange.end) return true;
-      const t = new Date(a.updatedAt).getTime();
-      if (dateRange.start && t < new Date(`${dateRange.start}T00:00:00.000Z`).getTime()) return false;
-      if (dateRange.end && t > new Date(`${dateRange.end}T23:59:59.999Z`).getTime()) return false;
-      return true;
-    })
     .filter((a) => {
       if (metricOp === "any") return true;
       const value = metricValue(a, view);

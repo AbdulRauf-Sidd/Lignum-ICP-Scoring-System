@@ -24,9 +24,8 @@ export interface AccountListItem {
   ownedBy: string | null;
   totalRevenue: number | null;
   revenueCurrencyCode: string | null;
-  // totalRevenue / total CVs and / total first interviews,
-  // lifetime (not date-scoped) — mirrors how totalRevenue above is a
-  // lifetime total too. Null when there are none.
+  // totalRevenue / total CVs and / total first interviews, scoped to the
+  // same date range as totalRevenue. Null when there are none.
   cvCost: number | null;
   interviewCost: number | null;
   updatedAt: string;
@@ -101,13 +100,35 @@ interface AccountListEventRow {
   activity_key: string;
 }
 
-async function fetchCvInterviewEventRows(supabase: ReturnType<typeof getSupabaseServerClient>): Promise<AccountListEventRow[]> {
+// Inclusive day bounds (YYYY-MM-DD) or null for an open end — same shape as
+// datePresetRange. Scopes revenue, CVs and interviews by their created_at,
+// exactly like the single-account metrics do.
+export interface DateRange {
+  start: string | null;
+  end: string | null;
+}
+
+function rangeIso(range?: DateRange): { startIso: string | null; endIso: string | null } {
+  return {
+    startIso: range?.start ? new Date(`${range.start}T00:00:00.000Z`).toISOString() : null,
+    endIso: range?.end ? new Date(`${range.end}T23:59:59.999Z`).toISOString() : null,
+  };
+}
+
+async function fetchCvInterviewEventRows(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  range?: DateRange,
+): Promise<AccountListEventRow[]> {
+  const { startIso, endIso } = rangeIso(range);
   const allRows: AccountListEventRow[] = [];
   for (let offset = 0; ; offset += EVENT_PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("active_accounts_jobs_candidates_events")
       .select("company_id, job_id, person_id, activity_key")
-      .in("activity_key", [CV_ACTIVITY_KEY, ...FIRST_INTERVIEW_ACTIVITY_KEYS])
+      .in("activity_key", [CV_ACTIVITY_KEY, ...FIRST_INTERVIEW_ACTIVITY_KEYS]);
+    if (startIso) query = query.gte("created_at", startIso);
+    if (endIso) query = query.lte("created_at", endIso);
+    const { data, error } = await query
       .order("event_id", { ascending: true })
       .range(offset, offset + EVENT_PAGE_SIZE - 1);
     if (error) throw new Error(`Failed to load candidate events: ${error.message}`);
@@ -134,8 +155,9 @@ function countEventsByCompany(rows: AccountListEventRow[], activityKeys: string[
   return result;
 }
 
-export async function getAccountsList(search?: string): Promise<AccountListItem[]> {
+export async function getAccountsList(search?: string, range?: DateRange): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
+  const { startIso, endIso } = rangeIso(range);
   const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
     const allRows: AccountListJobRow[] = [];
     for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
@@ -155,9 +177,12 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
   const fetchPlacementRows = async (): Promise<AccountListPlacementRow[]> => {
     const allRows: AccountListPlacementRow[] = [];
     for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("active_accounts_placements")
-        .select("company_id, job_id, fee, fee_type_id, salary, currency:currencies!salary_currency_id(code)")
+        .select("company_id, job_id, fee, fee_type_id, salary, currency:currencies!salary_currency_id(code)");
+      if (startIso) query = query.gte("created_at", startIso);
+      if (endIso) query = query.lte("created_at", endIso);
+      const { data, error } = await query
         .order("placement_id", { ascending: true })
         .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
       if (error) throw new Error(`Failed to load account placements: ${error.message}`);
@@ -181,7 +206,7 @@ export async function getAccountsList(search?: string): Promise<AccountListItem[
     fetchTierJobRows(),
     fetchPlacementRows(),
     getUsdExchangeRates(),
-    fetchCvInterviewEventRows(supabase),
+    fetchCvInterviewEventRows(supabase, range),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 

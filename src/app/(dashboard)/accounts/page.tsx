@@ -10,6 +10,7 @@ import {
   getAccountFirmographics,
   DEFAULT_HEALTH_WEIGHTS,
 } from "@/lib/data/accounts";
+import { DATE_PRESET_LABELS, datePresetRange, type DatePreset } from "@/lib/date-presets";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 
 // Synced from Loxo on its own schedule, and status/owner are edited live —
@@ -22,7 +23,15 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
   const companyParam = Array.isArray(params.company) ? params.company[0] : params.company;
   const searchParam = Array.isArray(params.q) ? params.q[0] : params.q;
 
-  const accounts = await getAccountsList(searchParam);
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const rangeParam = first(params.range);
+  const preset: DatePreset = DATE_PRESET_LABELS.some(([value]) => value === rangeParam)
+    ? (rangeParam as DatePreset)
+    : "all_time";
+  const customStart = first(params.from) ?? "";
+  const customEnd = first(params.to) ?? "";
+
+  const accounts = await getAccountsList(searchParam, datePresetRange(preset, customStart, customEnd));
   const selectedCompanyId = companyParam ? Number(companyParam) : null;
 
   const [header, jobs, qualitative, talentInsights, healthWeights] = selectedCompanyId
@@ -51,6 +60,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
       <AccountsWorkspace
         accounts={accounts}
         initialSearch={searchParam ?? ""}
+        initialDate={{ preset, customStart, customEnd }}
         selectedCompanyId={selectedCompanyId}
         header={header}
         jobs={jobs}

@@ -27,6 +27,7 @@ const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: 
 export function AccountsWorkspace({
   accounts,
   initialSearch,
+  initialDate,
   selectedCompanyId,
   header,
   jobs,
@@ -37,6 +38,7 @@ export function AccountsWorkspace({
 }: {
   accounts: AccountListItem[];
   initialSearch: string;
+  initialDate: { preset: DatePreset; customStart: string; customEnd: string };
   selectedCompanyId: number | null;
   header: AccountHeader | null;
   jobs: AccountJob[];
@@ -67,7 +69,12 @@ export function AccountsWorkspace({
       )}
       <div className={cn(navigating && "pointer-events-none opacity-40 transition-opacity")}>
         {!selectedCompanyId || !header ? (
-          <AccountsList accounts={accounts} initialSearch={initialSearch} onNavigate={() => setNavigating(true)} />
+          <AccountsList
+            accounts={accounts}
+            initialSearch={initialSearch}
+            initialDate={initialDate}
+            onNavigate={() => setNavigating(true)}
+          />
         ) : (
           <AccountDetail
             key={header.companyId}
