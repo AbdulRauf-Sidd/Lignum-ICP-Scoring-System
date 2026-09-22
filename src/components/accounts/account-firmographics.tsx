@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
-import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
+import { formatGbpCompact, formatNumber, formatDate } from "@/lib/format";
 import type { AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
 import type { ContactRow, ContactStatus } from "@/lib/data/contacts";
 import type { Company } from "@/lib/types";
@@ -52,13 +52,13 @@ export function AccountFirmographics({
   contacts: ContactRow[];
 }) {
   const fields: { label: string; value: string | null; fallback?: boolean }[] = [
-    { label: "Revenue", value: data ? formatUsdCompact(data.revenueUsd) : null, fallback: data?.revenueSource === "creditsafe" },
+    { label: "Revenue", value: data ? formatGbpCompact(data.revenueGbp) : null, fallback: data?.revenueSource === "creditsafe" },
     { label: "Headcount", value: data ? formatNumber(data.headcount) : null, fallback: data?.headcountSource === "creditsafe" },
     { label: "Sites", value: data ? formatNumber(data.numberOfSites) : null },
     { label: "HQ", value: data?.hq ?? null },
     { label: "Founded", value: data?.foundedYear ? String(data.foundedYear) : null },
     { label: "Credit", value: data && data.creditRating !== null ? `${Math.round(data.creditRating)}/100` : null },
-    { label: "Credit limit", value: data ? formatUsdCompact(data.creditLimit) : null },
+    { label: "Credit limit", value: data ? formatGbpCompact(data.creditLimitGbp) : null },
     { label: "Risk", value: data ? riskLabel(data) : null },
     { label: "Ownership", value: data?.ownership ?? null },
     { label: "Hiring activity (6 mo)", value: company ? formatNumber(company.hiringEventCount) : null },

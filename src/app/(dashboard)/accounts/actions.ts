@@ -2,7 +2,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/auth-server";
-import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
+import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import {
   ALLOWED_JOB_CATEGORIES,
@@ -29,16 +29,16 @@ export interface AccountMetrics {
   firstInterviews: number;
   totalPlacements: number;
   revenue: CurrencyAmount[];
-  // Sum of `revenue` converted to USD — null if one of the currencies isn't
+  // Sum of `revenue` converted to GBP — null if one of the currencies isn't
   // in the rates we have, so the caller can fall back to showing the
   // per-currency breakdown instead of a wrong number.
-  revenueUsd: number | null;
-  // false when revenueUsd was computed from the static fallback snapshot
+  revenueGbp: number | null;
+  // false when revenueGbp was computed from the static fallback snapshot
   // rather than a live/cached fetch — lets the caller avoid claiming "today's
-  // rates" when they aren't. Meaningless when revenueUsd is null.
+  // rates" when they aren't. Meaningless when revenueGbp is null.
   revenueRatesLive: boolean;
-  // Revenue per CV / per first interview (revenueUsd divided by each count) —
-  // null when there's no USD revenue figure or the count is 0.
+  // Revenue per CV / per first interview (revenueGbp divided by each count) —
+  // null when there's no GBP revenue figure or the count is 0.
   cvCost: number | null;
   interviewCost: number | null;
   // Jobs added in the date range (Tier 1 / Tier 2 categories only).
@@ -46,7 +46,7 @@ export interface AccountMetrics {
   // recruiterCost = totalCvs * model_settings.cv_cost, accountManagementCost =
   // totalJobs * model_settings.interview_cost, businessCost = their sum. Null
   // when the model setting isn't configured on the Model config page, so the
-  // caller shows a placeholder instead of a wrong $0 figure.
+  // caller shows a placeholder instead of a wrong £0 figure.
   recruiterCost: number | null;
   accountManagementCost: number | null;
   businessCost: number | null;
@@ -159,7 +159,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
 
   // Roughly a fifth of companies have placements in more than one currency —
   // summing those together would misrepresent the total, so revenue is kept
-  // as separate per-currency totals as well as a converted-to-USD figure.
+  // as separate per-currency totals as well as a converted-to-GBP figure.
   const revenueByCurrency = new Map<string | null, number>();
   for (const p of placements) {
     const amount = placementRevenue(p);
@@ -171,15 +171,15 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     .map(([code, amount]) => ({ code, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  const { rates, live } = await getUsdExchangeRates();
-  let revenueUsd: number | null = 0;
+  const { rates, live } = await getGbpExchangeRates();
+  let revenueGbp: number | null = 0;
   for (const r of revenue) {
-    const converted = convertToUsd(r.amount, r.code, rates);
+    const converted = convertToGbp(r.amount, r.code, rates);
     if (converted === null) {
-      revenueUsd = null;
+      revenueGbp = null;
       break;
     }
-    revenueUsd += converted;
+    revenueGbp += converted;
   }
 
   const totalCvs = countCvs(cvRows);
@@ -193,10 +193,10 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     firstInterviews,
     totalPlacements: placements.length,
     revenue,
-    revenueUsd,
+    revenueGbp,
     revenueRatesLive: live,
-    cvCost: revenueUsd !== null && totalCvs > 0 ? revenueUsd / totalCvs : null,
-    interviewCost: revenueUsd !== null && firstInterviews > 0 ? revenueUsd / firstInterviews : null,
+    cvCost: revenueGbp !== null && totalCvs > 0 ? revenueGbp / totalCvs : null,
+    interviewCost: revenueGbp !== null && firstInterviews > 0 ? revenueGbp / firstInterviews : null,
     totalJobs,
     recruiterCost,
     accountManagementCost,
