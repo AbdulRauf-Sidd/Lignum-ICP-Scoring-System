@@ -14,13 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SECTORS } from "@/lib/constants";
 import { ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { formatUsdCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
-import type { IcpProfileRow } from "@/lib/data/icp-profiles";
+import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -79,10 +78,32 @@ function isFlagged(company: Company): boolean {
   return needsEntityConfirmation(company) || company.matchFlag === "weak" || company.matchFlag === "no_match";
 }
 
-export function TriageWorkspace({ companies, profiles }: { companies: Company[]; profiles: IcpProfileRow[] }) {
+export function TriageWorkspace({
+  companies,
+  profiles,
+  taxonomy,
+}: {
+  companies: Company[];
+  profiles: IcpProfileRow[];
+  taxonomy: SectorTaxonomyRow[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialReason = searchParams.get("reason") as TriageReason | null;
+
+  // Only active taxonomy entries -- matches what the classification LLM is
+  // itself allowed to choose from, so a manual override here can't assign a
+  // sector/sub-sector combo that's been deactivated.
+  const sectorGroups = React.useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const row of taxonomy) {
+      if (!row.active) continue;
+      const list = map.get(row.sector) ?? [];
+      list.push(row.sub_sector);
+      map.set(row.sector, list);
+    }
+    return Array.from(map.entries()).map(([sector, subSectors]) => ({ sector, subSectors }));
+  }, [taxonomy]);
 
   const items = companies;
   const [resolutions, setResolutions] = React.useState<Record<string, Resolution>>({});
@@ -300,6 +321,7 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
               key={c.id}
               company={c}
               profiles={profiles}
+              sectorGroups={sectorGroups}
               resolution={resolutions[c.id] ?? "pending"}
               edit={edits[c.id]}
               onEditChange={(sector, subSector, icpName) =>
@@ -324,6 +346,7 @@ export function TriageWorkspace({ companies, profiles }: { companies: Company[];
 function TriageCard({
   company,
   profiles,
+  sectorGroups,
   resolution,
   edit,
   onEditChange,
@@ -338,6 +361,7 @@ function TriageCard({
 }: {
   company: Company;
   profiles: IcpProfileRow[];
+  sectorGroups: { sector: string; subSectors: string[] }[];
   resolution: Resolution;
   edit?: { sector: string; subSector: string; icpName: string };
   onEditChange: (sector: string, subSector: string, icpName: string) => void;
@@ -353,7 +377,7 @@ function TriageCard({
   const sector = edit?.sector ?? company.proposedSector ?? "";
   const subSector = edit?.subSector ?? company.proposedSubSector ?? "";
   const icpName = edit?.icpName ?? company.icp ?? "";
-  const subSectorOptions = SECTORS.find((s) => s.sector === sector)?.subSectors ?? [];
+  const subSectorOptions = sectorGroups.find((s) => s.sector === sector)?.subSectors ?? [];
   const resolved = resolution !== "pending";
 
   const warnings = getWarnings(company);
@@ -500,14 +524,14 @@ function TriageCard({
                   disabled={isPending}
                   value={sector}
                   onValueChange={(v) =>
-                    onEditChange(v, SECTORS.find((s) => s.sector === v)?.subSectors[0] ?? "", icpName)
+                    onEditChange(v, sectorGroups.find((s) => s.sector === v)?.subSectors[0] ?? "", icpName)
                   }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SECTORS.map((s) => (
+                    {sectorGroups.map((s) => (
                       <SelectItem key={s.sector} value={s.sector}>
                         {s.sector}
                       </SelectItem>

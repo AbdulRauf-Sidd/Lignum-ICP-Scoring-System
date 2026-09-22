@@ -12,7 +12,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ICP_NAMES } from "@/lib/constants";
 import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
@@ -51,7 +50,15 @@ function computeStats(list: Company[]): IcpStats {
   };
 }
 
-export function TargetListWorkspace({ companies, initialSearch }: { companies: Company[]; initialSearch: string }) {
+export function TargetListWorkspace({
+  companies,
+  initialSearch,
+  icpNames,
+}: {
+  companies: Company[];
+  initialSearch: string;
+  icpNames: string[];
+}) {
   const scoredCompanies = companies;
   const router = useRouter();
   const pathname = usePathname();
@@ -93,14 +100,23 @@ export function TargetListWorkspace({ companies, initialSearch }: { companies: C
     [scoredCompanies, archived, showArchived],
   );
 
+  // Union with any ICP name actually present on a company, so a profile
+  // that's since been renamed or deleted doesn't make its historical
+  // companies vanish from the tab bar.
+  const allIcpNames = React.useMemo(() => {
+    const names = new Set(icpNames);
+    for (const c of scoredCompanies) if (c.icp) names.add(c.icp);
+    return Array.from(names);
+  }, [icpNames, scoredCompanies]);
+
   const icpStats = React.useMemo(() => {
     const byIcp = new Map<string, IcpStats>();
-    for (const name of ICP_NAMES) {
+    for (const name of allIcpNames) {
       byIcp.set(name, computeStats(notArchived.filter((c) => c.icp === name)));
     }
     byIcp.set("all", computeStats(notArchived));
     return byIcp;
-  }, [notArchived]);
+  }, [allIcpNames, notArchived]);
 
   const activeStats = icpStats.get(tab) ?? computeStats([]);
 
@@ -178,7 +194,7 @@ export function TargetListWorkspace({ companies, initialSearch }: { companies: C
       {/* ICP profile tabs — bordered tiles with count, avg score and a tier split bar */}
       <Card className="mb-4">
       <CardContent className="flex flex-nowrap gap-2.5 overflow-x-auto">
-        {[...ICP_NAMES, "all"].map((name) => {
+        {[...allIcpNames, "all"].map((name) => {
           const stats = icpStats.get(name) ?? computeStats([]);
           const active = tab === name;
           const isAll = name === "all";

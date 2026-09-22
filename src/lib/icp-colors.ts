@@ -3,8 +3,8 @@
 // analytics charts). Colors are keyed by a hash of the ICP name rather than
 // its position in any array, so the same ICP always gets the same color
 // regardless of sort order, filtering, or how many profiles exist — and a
-// custom ICP profile name (not in the static SECTORS list) still gets a
-// stable, correct color instead of silently falling back to slot 0.
+// custom ICP profile name still gets a stable, correct color instead of
+// silently falling back to slot 0.
 //
 // The hue order below matches CATEGORICAL_LIGHT/DARK in chart-colors.ts
 // (blue, orange, aqua, yellow, magenta, green, violet, red) so a component

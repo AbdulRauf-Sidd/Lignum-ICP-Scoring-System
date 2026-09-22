@@ -34,10 +34,17 @@ export interface UsageLineItem {
   creditsUsed: number | null;
 }
 
+// n8n marks a run "completed" once its last node finishes, but a couple of
+// code paths still fall through without reaching that node (see the
+// handover notes) -- past this age with a status that never advanced past
+// "in_progress", it's more likely stale than genuinely still running.
+const STALE_IN_PROGRESS_MS = 30 * 60 * 1000;
+
 export interface UsageRunDetail extends UsageRunRow {
   companyCount: number;
   totalCostUsd: number;
   items: UsageLineItem[];
+  isStale: boolean;
 }
 
 export interface UsageSummary {
@@ -93,6 +100,7 @@ export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
     itemsByRun.set(item.usage_run_id, list);
   }
 
+  const now = Date.now();
   return runRows.map((run) => {
     const runItems = itemsByRun.get(run.id) ?? [];
     return {
@@ -100,6 +108,7 @@ export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
       companyCount: new Set(runItems.map((i) => i.companyId)).size,
       totalCostUsd: runItems.reduce((sum, i) => sum + (i.costUsd ?? 0), 0),
       items: runItems,
+      isStale: run.status === "in_progress" && now - new Date(run.started_at).getTime() > STALE_IN_PROGRESS_MS,
     };
   });
 }

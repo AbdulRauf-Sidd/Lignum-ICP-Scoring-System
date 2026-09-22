@@ -151,7 +151,14 @@ export function UsageWorkspace({
               const metaParts = [`${run.companyCount} compan${run.companyCount === 1 ? "y" : "ies"}`];
               if (reportsCount > 0) metaParts.push(`${reportsCount} report${reportsCount === 1 ? "" : "s"}`);
               if (cognismCredits > 0) metaParts.push(`${cognismCredits} Cognism credit${cognismCredits === 1 ? "" : "s"}`);
-              if (reportsCount === 0 && cognismCredits === 0) metaParts.push(run.status.replace(/_/g, " "));
+              if (reportsCount === 0 && cognismCredits === 0) {
+                // n8n marks a run "completed" once its last node finishes, but a
+                // handful of code paths still don't reach that node (see the
+                // handover notes) -- `run.isStale` (computed server-side) catches
+                // an "in progress" that's old enough to be stale rather than
+                // genuinely still running.
+                metaParts.push(run.isStale ? "no billable activity" : run.status.replace(/_/g, " "));
+              }
               return (
                 <Card key={run.id} className="gap-0 overflow-hidden py-0">
                   <button

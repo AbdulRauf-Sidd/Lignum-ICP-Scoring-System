@@ -1,5 +1,4 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { SECTORS } from "@/lib/constants";
 import type { Tier, MatchFlag } from "@/lib/types";
 
 interface ScoredCompanyRow {
@@ -35,24 +34,32 @@ export interface SectorPerformance {
 export async function getSectorPerformance(): Promise<SectorPerformance[]> {
   const rows = await getScoredCompanyRows();
 
-  return SECTORS.map(({ sector }) => {
-    const inSector = rows.filter((r) => r.sector === sector);
-    const avgScore = inSector.length
-      ? Math.round(inSector.reduce((sum, r) => sum + (r.score ?? 0), 0) / inSector.length)
-      : null;
-    const matches = inSector.filter((r) => r.match_flag === "match").length;
-    const distinctIcps = Array.from(new Set(inSector.map((r) => r.icp).filter((icp): icp is string => !!icp)));
+  // Derived from the sectors actually present in scored data, rather than a
+  // fixed list -- a sector only ever appears here because a real company was
+  // classified into it, so a newly-added ICP profile shows up the moment
+  // anything scores under it, with nothing to keep in sync by hand.
+  const sectors = Array.from(new Set(rows.map((r) => r.sector).filter((s): s is string => !!s)));
 
-    return {
-      sector,
-      icp: distinctIcps.length === 0 ? "—" : distinctIcps.length === 1 ? distinctIcps[0] : "Multiple",
-      scoredCount: inSector.length,
-      avgScore,
-      matchRate: inSector.length ? Math.round((matches / inSector.length) * 100) : null,
-      noMatchCount: inSector.filter((r) => r.match_flag === "no_match").length,
-      tierACount: inSector.filter((r) => r.tier === "A").length,
-    };
-  });
+  return sectors
+    .map((sector) => {
+      const inSector = rows.filter((r) => r.sector === sector);
+      const avgScore = inSector.length
+        ? Math.round(inSector.reduce((sum, r) => sum + (r.score ?? 0), 0) / inSector.length)
+        : null;
+      const matches = inSector.filter((r) => r.match_flag === "match").length;
+      const distinctIcps = Array.from(new Set(inSector.map((r) => r.icp).filter((icp): icp is string => !!icp)));
+
+      return {
+        sector,
+        icp: distinctIcps.length === 0 ? "—" : distinctIcps.length === 1 ? distinctIcps[0] : "Multiple",
+        scoredCount: inSector.length,
+        avgScore,
+        matchRate: inSector.length ? Math.round((matches / inSector.length) * 100) : null,
+        noMatchCount: inSector.filter((r) => r.match_flag === "no_match").length,
+        tierACount: inSector.filter((r) => r.tier === "A").length,
+      };
+    })
+    .sort((a, b) => b.scoredCount - a.scoredCount);
 }
 
 export interface SectorCompanyCount {
@@ -65,10 +72,15 @@ export async function getCompanyCountBySector(): Promise<SectorCompanyCount[]> {
   const { data, error } = await supabase.from("companies").select("sector");
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
   const rows = (data ?? []) as { sector: string | null }[];
-  return SECTORS.map(({ sector }) => ({
-    sector,
-    count: rows.filter((r) => r.sector === sector).length,
-  })).sort((a, b) => b.count - a.count);
+
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.sector) continue;
+    counts.set(r.sector, (counts.get(r.sector) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([sector, count]) => ({ sector, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export interface TierCount {
