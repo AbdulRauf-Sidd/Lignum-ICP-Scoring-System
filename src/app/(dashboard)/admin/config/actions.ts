@@ -89,6 +89,26 @@ export async function setSectorTaxonomyActive(id: string, active: boolean) {
   revalidatePath("/admin/config");
 }
 
+// New entries default to active -- the classification LLM only ever sees
+// active taxonomy, so an inactive-by-default row would silently never be
+// offered until someone remembered to flip it on.
+export async function createSectorTaxonomyEntry(sector: string, subSector: string): Promise<{ id: string }> {
+  const trimmedSector = sector.trim();
+  const trimmedSubSector = subSector.trim();
+  if (!trimmedSector) throw new Error("Sector name is required.");
+  if (!trimmedSubSector) throw new Error("Sub-sector name is required.");
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("sector_taxonomy")
+    .insert({ sector: trimmedSector, sub_sector: trimmedSubSector, active: true })
+    .select("id")
+    .single();
+  if (error) throw new Error(`Failed to add sector taxonomy entry: ${error.message}`);
+  revalidatePath("/admin/config");
+  return { id: data.id as string };
+}
+
 export interface ModelSettingsInput {
   tier_a_min: number;
   tier_b_min: number;
