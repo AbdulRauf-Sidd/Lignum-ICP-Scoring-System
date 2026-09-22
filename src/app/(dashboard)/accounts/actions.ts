@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getUsdExchangeRates, convertToUsd } from "@/lib/exchange-rates";
+import { getModelSettings } from "@/lib/data/model-settings";
 import {
   ALLOWED_JOB_CATEGORIES,
   QUALITATIVE_METRICS,
@@ -36,6 +37,19 @@ export interface AccountMetrics {
   // rather than a live/cached fetch — lets the caller avoid claiming "today's
   // rates" when they aren't. Meaningless when revenueUsd is null.
   revenueRatesLive: boolean;
+  // Revenue per CV / per first interview (revenueUsd divided by each count) —
+  // null when there's no USD revenue figure or the count is 0.
+  cvCost: number | null;
+  interviewCost: number | null;
+  // Jobs added in the date range (Tier 1 / Tier 2 categories only).
+  totalJobs: number;
+  // recruiterCost = totalCvs * model_settings.cv_cost, accountManagementCost =
+  // totalJobs * model_settings.interview_cost, businessCost = their sum. Null
+  // when the model setting isn't configured on the Model config page, so the
+  // caller shows a placeholder instead of a wrong $0 figure.
+  recruiterCost: number | null;
+  accountManagementCost: number | null;
+  businessCost: number | null;
 }
 
 interface EventRow {
@@ -85,12 +99,16 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   // totals intentionally use every event belonging to the selected company.
   const { data: jobRows, error: jobsError } = await supabase
     .from("active_accounts_jobs")
-    .select("job_id")
+    .select("job_id, created_at")
     .eq("company_id", companyId)
     .in("job_category", ALLOWED_JOB_CATEGORIES);
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
   const jobIds = (jobRows ?? []).map((r) => r.job_id as number);
+  const totalJobs = (jobRows ?? []).filter((r) => {
+    const t = new Date(r.created_at as string).getTime();
+    return t >= new Date(startDate).getTime() && t <= new Date(endDate).getTime();
+  }).length;
   const fetchEventPages = async (activityKeys: string[], metricName: string): Promise<EventRow[]> => {
     const allRows: EventRow[] = [];
 
@@ -119,6 +137,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     cvRows,
     interviewRows,
     { data: placementRows, error: placementsError },
+    modelSettings,
   ] = await Promise.all([
     cvEventsPromise,
     interviewEventsPromise,
@@ -131,6 +150,7 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
           .gte("created_at", startDate)
           .lte("created_at", endDate)
       : Promise.resolve({ data: [], error: null }),
+    getModelSettings(),
   ]);
 
   if (placementsError) throw new Error(`Failed to load placements: ${placementsError.message}`);
@@ -162,13 +182,25 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
     revenueUsd += converted;
   }
 
+  const totalCvs = countCvs(cvRows);
+  const firstInterviews = countFirstInterviews(interviewRows);
+
+  const recruiterCost = modelSettings.cv_cost !== null ? totalCvs * modelSettings.cv_cost : null;
+  const accountManagementCost = modelSettings.interview_cost !== null ? totalJobs * modelSettings.interview_cost : null;
+
   return {
-    totalCvs: countCvs(cvRows),
-    firstInterviews: countFirstInterviews(interviewRows),
+    totalCvs,
+    firstInterviews,
     totalPlacements: placements.length,
     revenue,
     revenueUsd,
     revenueRatesLive: live,
+    cvCost: revenueUsd !== null && totalCvs > 0 ? revenueUsd / totalCvs : null,
+    interviewCost: revenueUsd !== null && firstInterviews > 0 ? revenueUsd / firstInterviews : null,
+    totalJobs,
+    recruiterCost,
+    accountManagementCost,
+    businessCost: recruiterCost !== null && accountManagementCost !== null ? recruiterCost + accountManagementCost : null,
   };
 }
 

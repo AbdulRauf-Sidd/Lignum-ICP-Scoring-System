@@ -13,6 +13,7 @@ export type TriageReason =
   | "no_icp_profile"
   | "processing_error"
   | "rejected"
+  | "move_to_accounts"
   | null;
 
 export type LifecycleStatus = "prospect" | "exported" | "client";
@@ -53,6 +54,18 @@ export interface SourcedField {
   source: FieldSource;
 }
 
+// An `active_accounts` row whose company_url matches a company's domain —
+// shown in triage so the move to accounts can be confirmed.
+export interface MatchedAccount {
+  companyId: number;
+  companyName: string;
+  companyUrl: string | null;
+  // companyUrl reduced to the bare host, comparable with Company.domain.
+  domain: string;
+  status: string;
+  ownedBy: string | null;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -90,6 +103,9 @@ export interface Company {
   proposedSector: string | null;
   proposedSubSector: string | null;
   oneLineReason: string;
+  // null = undecided; true hides the company from the target list.
+  movedToAccounts: boolean | null;
+  matchedAccounts: MatchedAccount[];
 }
 
 export type ContactStatus = "listed" | "in_process" | "redeemed" | "failed";

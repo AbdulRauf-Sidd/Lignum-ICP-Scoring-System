@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 // the currencies in the mix isn't in it — falls back to the honest per-
 // currency breakdown rather than showing a wrong or missing number.
 function formatRevenue(metrics: AccountMetricsData): string {
-  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD") : formatMultiCurrency(metrics.revenue);
+  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD", 0) : formatMultiCurrency(metrics.revenue, 0);
 }
 
 // This dataset's real rows only ever go back a handful of years — early
@@ -110,17 +110,6 @@ export function AccountMetrics({
     };
   }, [companyId, rangeStart, rangeEnd]);
 
-  // Same USD revenue and counts as the cards above, both scoped to the
-  // selected date range — so the price moves only when the underlying
-  // activity does, not from switching between a lifetime figure and a
-  // windowed one. Converting first then dividing (rather than dividing each
-  // currency bucket and converting after) gives the same result but only
-  // needs the one already-converted total.
-  const pricePerCv =
-    metrics && metrics.revenueUsd !== null && metrics.totalCvs > 0 ? metrics.revenueUsd / metrics.totalCvs : null;
-  const pricePerInterview =
-    metrics && metrics.revenueUsd !== null && metrics.firstInterviews > 0 ? metrics.revenueUsd / metrics.firstInterviews : null;
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -146,13 +135,13 @@ export function AccountMetrics({
         {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard
           label="Total revenue"
           value={metrics ? formatRevenue(metrics) : "—"}
           hint={
             metrics && metrics.revenueUsd !== null && metrics.revenue.length > 0
-              ? `Converted from ${formatMultiCurrency(metrics.revenue)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
+              ? `Converted from ${formatMultiCurrency(metrics.revenue, 0)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
               : "From placements in this date range"
           }
           tone="emerald"
@@ -172,18 +161,39 @@ export function AccountMetrics({
           icon={CheckCircle2}
         />
         <MetricCard
-          label="Price / CV"
-          value={formatCurrency(pricePerCv, "USD")}
-          hint="Revenue ÷ CVs, this date range"
+          label="CV cost"
+          value={metrics ? formatCurrency(metrics.cvCost, "USD", 0) : "—"}
+          hint="Total revenue ÷ total CVs, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
-          label="Price / interview"
-          value={formatCurrency(pricePerInterview, "USD")}
-          hint="Revenue ÷ interviews, this date range"
+          label="Interview cost"
+          value={metrics ? formatCurrency(metrics.interviewCost, "USD", 0) : "—"}
+          hint="Total revenue ÷ first interviews, this date range"
           tone="teal"
           icon={Calculator}
+        />
+        <MetricCard
+          label="Recruiter cost"
+          value={metrics ? formatCurrency(metrics.recruiterCost, "USD", 0) : "—"}
+          hint="Total CVs × CV cost (Model config)"
+          tone="sky"
+          icon={FileText}
+        />
+        <MetricCard
+          label="Account management cost"
+          value={metrics ? formatCurrency(metrics.accountManagementCost, "USD", 0) : "—"}
+          hint={`${metrics ? formatNumber(metrics.totalJobs) : "—"} jobs added × interview cost (Model config)`}
+          tone="amber"
+          icon={Calculator}
+        />
+        <MetricCard
+          label="Business cost"
+          value={metrics ? formatCurrency(metrics.businessCost, "USD", 0) : "—"}
+          hint="Recruiter cost + account management cost"
+          tone="violet"
+          icon={Banknote}
         />
       </div>
       <Badge variant="outline" className="w-fit border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">

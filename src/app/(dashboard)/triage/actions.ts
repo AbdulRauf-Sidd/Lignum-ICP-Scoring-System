@@ -28,6 +28,22 @@ export async function rejectCompany(companyId: string) {
   revalidatePath("/triage");
 }
 
+// Confirming or declining a move-to-accounts match: either way the company
+// leaves triage as scored; the flag decides whether the target list shows it.
+export async function resolveMoveToAccounts(companyId: string, confirmed: boolean) {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("companies")
+    .update({ moved_to_accounts: confirmed, status: "scored", triage_reason: null })
+    .eq("id", companyId);
+
+  if (error) throw new Error(`Failed to ${confirmed ? "confirm" : "cancel"} the move: ${error.message}`);
+
+  revalidatePath("/triage");
+  revalidatePath("/target-list");
+  revalidatePath("/contacts");
+}
+
 // Sector and ICP profile both feed the Scoring Engine (sector drives icp_fit;
 // the ICP profile supplies every weight, band and fit rule) — sub-sector is
 // informational only, never scored. So an edit that changes either one needs

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,64 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { AccountListItem } from "@/lib/data/accounts";
-import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
+import { type DatePreset, DATE_PRESET_LABELS } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
-type SortKey = "name" | "revenue";
+type SortKey = "name" | "owner" | "revenue" | "cvCost" | "interviewCost" | "updated";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  name: "Company",
+  owner: "Owner",
+  revenue: "Revenue",
+  cvCost: "CV Cost",
+  interviewCost: "Interview Cost",
+  updated: "Updated",
+};
+
+// Which figure the numeric filter applies to.
+type MetricView = "revenue" | "cvCost" | "interviewCost";
+
+const METRIC_VIEW_LABELS: Record<MetricView, string> = {
+  revenue: "Revenue",
+  cvCost: "CV Cost",
+  interviewCost: "Interview Cost",
+};
+
+function metricValue(a: AccountListItem, view: MetricView): number | null {
+  if (view === "revenue") return a.totalRevenue;
+  if (view === "cvCost") return a.cvCost;
+  return a.interviewCost;
+}
+
+function SortableHead({
+  label,
+  active,
+  desc,
+  onClick,
+  className,
+}: {
+  label: string;
+  active: boolean;
+  desc: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <TableHead className={className}>
+      <button
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          active && "text-foreground",
+          className?.includes("text-right") && "flex-row-reverse",
+        )}
+      >
+        {label}
+        <ArrowUpDown className={cn("size-3 transition-transform", active && !desc && "rotate-180")} />
+      </button>
+    </TableHead>
+  );
+}
 
 const UNASSIGNED = "Unassigned";
 const PAGE_SIZE = 20;
@@ -49,11 +103,11 @@ function StatTile({ label, value, tone }: { label: string; value: number | strin
   );
 }
 
-// ---- Revenue filter ----
+// ---- Metric (Revenue / CV Cost / Interview Cost) filter ----
 
-type RevenueOp = "any" | "gt" | "lt" | "eq" | "between";
+type MetricOp = "any" | "gt" | "lt" | "eq" | "between";
 
-const REVENUE_OP_LABELS: Record<RevenueOp, string> = {
+const METRIC_OP_LABELS: Record<MetricOp, string> = {
   any: "Any",
   gt: "Greater than",
   lt: "Less than",
@@ -64,35 +118,98 @@ const REVENUE_OP_LABELS: Record<RevenueOp, string> = {
 export function AccountsList({
   accounts,
   initialSearch,
+  initialDate,
   onNavigate,
 }: {
   accounts: AccountListItem[];
   initialSearch: string;
+  initialDate: { preset: DatePreset; customStart: string; customEnd: string };
   onNavigate: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = React.useState(initialSearch);
 
-  // Search runs server-side (name match happens in the Supabase query, not
-  // client-side filtering below) -- debounced so we're not re-fetching the
-  // whole list on every keystroke.
-  React.useEffect(() => {
-    const timeout = setTimeout(() => {
-      const query = search ? `?q=${encodeURIComponent(search)}` : "";
-      router.replace(`${pathname}${query}`, { scroll: false });
-    }, 1000);
-    return () => clearTimeout(timeout);
-  }, [search, router, pathname]);
   const [selectedOwners, setSelectedOwners] = React.useState<Set<string>>(new Set());
-  const [datePreset, setDatePreset] = React.useState<DatePreset>("all_time");
-  const [customStart, setCustomStart] = React.useState("");
-  const [customEnd, setCustomEnd] = React.useState("");
-  const [revenueOp, setRevenueOp] = React.useState<RevenueOp>("any");
-  const [revenueValue, setRevenueValue] = React.useState("");
-  const [revenueValue2, setRevenueValue2] = React.useState("");
+  const [datePreset, setDatePreset] = React.useState<DatePreset>(initialDate.preset);
+  const [customStart, setCustomStart] = React.useState(initialDate.customStart);
+  const [customEnd, setCustomEnd] = React.useState(initialDate.customEnd);
+
+  // Search and the date range both run server-side (name match, and revenue /
+  // CVs / interviews scoped to the range, happen in the Supabase queries) —
+  // synced to the URL. Search is debounced so we're not re-fetching the whole
+  // list on every keystroke; a date change goes through quickly.
+  const query = React.useMemo(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (datePreset !== "all_time") params.set("range", datePreset);
+    if (datePreset === "custom") {
+      if (customStart) params.set("from", customStart);
+      if (customEnd) params.set("to", customEnd);
+    }
+    return params.toString();
+  }, [search, datePreset, customStart, customEnd]);
+
+  // `appliedQuery` is the URL last pushed; `dataQuery` is the one the current
+  // `accounts` were actually fetched for. They differ while a request is in
+  // flight, and `query` differs from `dataQuery` from the moment a filter
+  // changes — that whole gap is "loading".
+  const [appliedQuery, setAppliedQuery] = React.useState(query);
+  const [dataQuery, setDataQuery] = React.useState(query);
+  const lastSearchRef = React.useRef(initialSearch);
+  React.useEffect(() => {
+    if (query === appliedQuery) return;
+    const searchChanged = search !== lastSearchRef.current;
+    lastSearchRef.current = search;
+    const timeout = setTimeout(
+      () => {
+        setAppliedQuery(query);
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      },
+      searchChanged ? 1000 : 300,
+    );
+    return () => clearTimeout(timeout);
+  }, [query, appliedQuery, search, router, pathname]);
+
+  // `accounts` is a fresh array every time the server sends new data, so that
+  // (not a transition flag, which resolves early) marks the fetch as done.
+  // Adjusted during render so there's no extra visible frame.
+  const [prevAccounts, setPrevAccounts] = React.useState(accounts);
+  if (accounts !== prevAccounts) {
+    setPrevAccounts(accounts);
+    setDataQuery(appliedQuery);
+  }
+  const loading = query !== dataQuery;
+
+  const [view, setView] = React.useState<MetricView>("revenue");
+  const [metricOp, setMetricOp] = React.useState<MetricOp>("any");
+  const [metricFilterValue, setMetricFilterValue] = React.useState("");
+  const [metricFilterValue2, setMetricFilterValue2] = React.useState("");
   const [sortBy, setSortBy] = React.useState<SortKey>("name");
+  const [sortDesc, setSortDesc] = React.useState(false);
   const [page, setPage] = React.useState(1);
+
+  // Text columns start A→Z, numeric/date columns start highest/newest first.
+  function toggleSort(key: SortKey) {
+    if (sortBy === key) {
+      setSortDesc((d) => !d);
+    } else {
+      setSortBy(key);
+      setSortDesc(key !== "name" && key !== "owner");
+    }
+    setPage(1);
+  }
+
+  // A threshold tied to one metric's scale (e.g. revenue > 100,000) doesn't
+  // carry meaning to another (CV cost is a very different scale) — clear it
+  // rather than silently reinterpreting the number against the new metric.
+  function updateView(next: MetricView) {
+    setView(next);
+    setMetricOp("any");
+    setMetricFilterValue("");
+    setMetricFilterValue2("");
+    setPage(1);
+  }
 
   const ownerOptions = React.useMemo(() => {
     const named = Array.from(new Set(accounts.map((a) => a.ownedBy).filter((o): o is string => !!o))).sort();
@@ -102,36 +219,41 @@ export function AccountsList({
   const withRevenue = accounts.filter((a) => a.totalRevenue !== null && a.totalRevenue > 0).length;
   const owners = new Set(accounts.map((a) => a.ownedBy).filter(Boolean)).size;
 
-  const dateRange = datePresetRange(datePreset, customStart, customEnd);
-  const revenueValueNum = Number(revenueValue);
-  const revenueValue2Num = Number(revenueValue2);
+  const metricValueNum = Number(metricFilterValue);
+  const metricValue2Num = Number(metricFilterValue2);
 
   const filtered = accounts
     .filter((a) => selectedOwners.size === 0 || selectedOwners.has(a.ownedBy ?? UNASSIGNED))
     .filter((a) => {
-      if (!dateRange.start && !dateRange.end) return true;
-      const t = new Date(a.updatedAt).getTime();
-      if (dateRange.start && t < new Date(`${dateRange.start}T00:00:00.000Z`).getTime()) return false;
-      if (dateRange.end && t > new Date(`${dateRange.end}T23:59:59.999Z`).getTime()) return false;
-      return true;
-    })
-    .filter((a) => {
-      if (revenueOp === "any") return true;
-      // Revenue not on file is neither "greater than" nor "less than" anything
-      // knowable — excluded from every operator rather than treated as $0.
-      if (a.totalRevenue === null) return false;
-      if (revenueOp === "gt") return Number.isFinite(revenueValueNum) ? a.totalRevenue > revenueValueNum : true;
-      if (revenueOp === "lt") return Number.isFinite(revenueValueNum) ? a.totalRevenue < revenueValueNum : true;
-      if (revenueOp === "eq") return Number.isFinite(revenueValueNum) ? a.totalRevenue === revenueValueNum : true;
+      if (metricOp === "any") return true;
+      const value = metricValue(a, view);
+      // Not on file is neither "greater than" nor "less than" anything
+      // knowable — excluded from every operator rather than treated as 0.
+      if (value === null) return false;
+      if (metricOp === "gt") return Number.isFinite(metricValueNum) ? value > metricValueNum : true;
+      if (metricOp === "lt") return Number.isFinite(metricValueNum) ? value < metricValueNum : true;
+      if (metricOp === "eq") return Number.isFinite(metricValueNum) ? value === metricValueNum : true;
       // between
-      if (!Number.isFinite(revenueValueNum) || !Number.isFinite(revenueValue2Num)) return true;
-      const lo = Math.min(revenueValueNum, revenueValue2Num);
-      const hi = Math.max(revenueValueNum, revenueValue2Num);
-      return a.totalRevenue >= lo && a.totalRevenue <= hi;
+      if (!Number.isFinite(metricValueNum) || !Number.isFinite(metricValue2Num)) return true;
+      const lo = Math.min(metricValueNum, metricValue2Num);
+      const hi = Math.max(metricValueNum, metricValue2Num);
+      return value >= lo && value <= hi;
     })
     .sort((a, b) => {
-      if (sortBy === "revenue") return (b.totalRevenue ?? -1) - (a.totalRevenue ?? -1);
-      return a.companyName.localeCompare(b.companyName);
+      let cmp = 0;
+      if (sortBy === "name") cmp = a.companyName.localeCompare(b.companyName);
+      else if (sortBy === "owner") cmp = (a.ownedBy ?? UNASSIGNED).localeCompare(b.ownedBy ?? UNASSIGNED);
+      else if (sortBy === "updated") cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      else {
+        // Not on file sorts below every real figure in either direction.
+        const av = metricValue(a, sortBy);
+        const bv = metricValue(b, sortBy);
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        cmp = av - bv;
+      }
+      return sortDesc ? -cmp : cmp;
     });
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -158,18 +280,13 @@ export function AccountsList({
     setPage(1);
   }
 
-  function updateRevenueOp(value: RevenueOp) {
-    setRevenueOp(value);
-    setPage(1);
-  }
-
-  function updateSortBy(value: SortKey) {
-    setSortBy(value);
+  function updateMetricOp(value: MetricOp) {
+    setMetricOp(value);
     setPage(1);
   }
 
   const dateActive = datePreset !== "all_time";
-  const revenueActive = revenueOp !== "any";
+  const metricFilterActive = metricOp !== "any";
 
   return (
     <div className="flex flex-col gap-6">
@@ -274,20 +391,21 @@ export function AccountsList({
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("bg-card", revenueActive && "border-primary/50 text-primary")}>
-                Revenue{revenueActive ? ` ${REVENUE_OP_LABELS[revenueOp]}` : ""}
+              <Button variant="outline" className={cn("bg-card", metricFilterActive && "border-primary/50 text-primary")}>
+                {METRIC_VIEW_LABELS[view]}
+                {metricFilterActive ? ` ${METRIC_OP_LABELS[metricOp]}` : ""}
                 <ChevronDown className="size-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Revenue</span>
-                {revenueActive && (
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{METRIC_VIEW_LABELS[view]}</span>
+                {metricFilterActive && (
                   <button
                     onClick={() => {
-                      updateRevenueOp("any");
-                      setRevenueValue("");
-                      setRevenueValue2("");
+                      updateMetricOp("any");
+                      setMetricFilterValue("");
+                      setMetricFilterValue2("");
                     }}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
@@ -295,41 +413,53 @@ export function AccountsList({
                   </button>
                 )}
               </div>
-              <Select value={revenueOp} onValueChange={(v) => updateRevenueOp(v as RevenueOp)}>
+              <Select value={view} onValueChange={(v) => updateView(v as MetricView)}>
                 <SelectTrigger className="w-full bg-card">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.entries(REVENUE_OP_LABELS) as [RevenueOp, string][]).map(([value, label]) => (
+                  {(Object.entries(METRIC_VIEW_LABELS) as [MetricView, string][]).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {revenueOp !== "any" && (
+              <Select value={metricOp} onValueChange={(v) => updateMetricOp(v as MetricOp)}>
+                <SelectTrigger className="w-full bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(METRIC_OP_LABELS) as [MetricOp, string][]).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {metricOp !== "any" && (
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
                     inputMode="decimal"
                     placeholder="$"
-                    value={revenueValue}
+                    value={metricFilterValue}
                     onChange={(e) => {
-                      setRevenueValue(e.target.value);
+                      setMetricFilterValue(e.target.value);
                       setPage(1);
                     }}
                     className="bg-card"
                   />
-                  {revenueOp === "between" && (
+                  {metricOp === "between" && (
                     <>
                       <span className="text-sm text-muted-foreground">and</span>
                       <Input
                         type="number"
                         inputMode="decimal"
                         placeholder="$"
-                        value={revenueValue2}
+                        value={metricFilterValue2}
                         onChange={(e) => {
-                          setRevenueValue2(e.target.value);
+                          setMetricFilterValue2(e.target.value);
                           setPage(1);
                         }}
                         className="bg-card"
@@ -341,38 +471,61 @@ export function AccountsList({
             </PopoverContent>
           </Popover>
 
-          <Select value={sortBy} onValueChange={(v) => updateSortBy(v as SortKey)}>
-            <SelectTrigger className="w-40 bg-card">
+          <Select value={sortBy} onValueChange={(v) => {
+              if (v !== sortBy) toggleSort(v as SortKey);
+            }}>
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="name">Sort: Name</SelectItem>
-              <SelectItem value="revenue">Sort: Revenue</SelectItem>
+              {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  Sort: {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <span className="ml-auto text-sm text-muted-foreground">
+          <Button
+            variant="outline"
+            size="icon"
+            className="bg-card"
+            onClick={() => setSortDesc((d) => !d)}
+            aria-label={sortDesc ? "Sorted descending" : "Sorted ascending"}
+            title={sortDesc ? "Descending" : "Ascending"}
+          >
+            <ArrowUpDown className={cn("size-3.5 transition-transform", !sortDesc && "rotate-180")} />
+          </Button>
+          <span className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+            {loading && <Loader2 className="size-4 animate-spin text-primary" aria-label="Loading" role="status" />}
             {filtered.length} of {accounts.length}
           </span>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={cn("relative transition-opacity", loading && "pointer-events-none opacity-50")}>
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-start justify-center pt-16">
+            <Loader2 className="size-7 animate-spin text-primary" aria-hidden />
+          </div>
+        )}
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Owner</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">Updated</TableHead>
+                  <SortableHead label="Company" active={sortBy === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
+                  <SortableHead label="Owner" active={sortBy === "owner"} desc={sortDesc} onClick={() => toggleSort("owner")} />
+                  <SortableHead label="Revenue" className="text-right" active={sortBy === "revenue"} desc={sortDesc} onClick={() => toggleSort("revenue")} />
+                  <SortableHead label="CV Cost" className="text-right" active={sortBy === "cvCost"} desc={sortDesc} onClick={() => toggleSort("cvCost")} />
+                  <SortableHead label="Interview Cost" className="text-right" active={sortBy === "interviewCost"} desc={sortDesc} onClick={() => toggleSort("interviewCost")} />
+                  <SortableHead label="Updated" className="text-right" active={sortBy === "updated"} desc={sortDesc} onClick={() => toggleSort("updated")} />
                   <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paged.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       No accounts match your filters.
                     </TableCell>
                   </TableRow>
@@ -388,9 +541,9 @@ export function AccountsList({
                   >
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(a.totalRevenue, a.revenueCurrencyCode ?? "USD")}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.totalRevenue, "USD", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.cvCost, "USD", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.interviewCost, "USD", 0)}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>
                       <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />
