@@ -1,7 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { FieldSource, MatchedAccount } from "@/lib/types";
 import { normalizeDomain } from "@/lib/domain";
-import { convertToUsd, getUsdExchangeRates } from "@/lib/exchange-rates";
+import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -205,7 +205,7 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     accountsQuery,
     fetchTierJobRows(),
     fetchPlacementRows(),
-    getUsdExchangeRates(),
+    getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
@@ -217,10 +217,10 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
 
     const revenue = calculatePlacementRevenue(placement);
     if (revenue === null) continue;
-    const revenueUsd = convertToUsd(revenue, placement.currency?.code ?? null, rates);
-    if (revenueUsd === null) continue;
+    const revenueGbp = convertToGbp(revenue, placement.currency?.code ?? null, rates);
+    if (revenueGbp === null) continue;
 
-    revenueByCompany.set(placement.company_id, (revenueByCompany.get(placement.company_id) ?? 0) + revenueUsd);
+    revenueByCompany.set(placement.company_id, (revenueByCompany.get(placement.company_id) ?? 0) + revenueGbp);
   }
 
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
@@ -239,7 +239,7 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       interviewCost: interviewCount > 0 ? totalRevenue / interviewCount : null,
       ownedBy: r.owned_by,
       totalRevenue,
-      revenueCurrencyCode: "USD",
+      revenueCurrencyCode: "GBP",
       updatedAt: r.updated_at,
     };
   });
@@ -482,7 +482,7 @@ export interface AccountFirmographics {
   // The matching prospecting `companies` row — used to load the rest of the
   // enrichment data (score, ICP, contacts) for the account detail page.
   companyRowId: string;
-  revenueUsd: number | null;
+  revenueGbp: number | null;
   revenueSource: FieldSource | null;
   headcount: number | null;
   headcountSource: FieldSource | null;
@@ -494,8 +494,9 @@ export interface AccountFirmographics {
   numberOfSites: number | null;
   // Creditsafe's "Company Recommendation" credit limit — reference only for
   // BD, never used in scoring (that's creditsafeRiskScore, driving the
-  // credit_risk ICP category instead).
-  creditLimit: number | null;
+  // credit_risk ICP category instead). Converted to GBP for display in the
+  // accounts module.
+  creditLimitGbp: number | null;
   // Legal entity type (e.g. "Corporation", "Limited Liability"), not true
   // ownership structure — this dataset has no parent/subsidiary/shareholder
   // data anywhere, so this is the closest honest stand-in.
@@ -539,15 +540,18 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
   if (!domain) return null;
 
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("companies")
-    .select(
-      "id, revenue_usd, revenue_source, headcount, headcount_source, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership, creditsafe_credit_limit",
-    )
-    .in("domain", [domain, `www.${domain}`])
-    .order("last_enriched_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+  const [{ data, error }, { rates }] = await Promise.all([
+    supabase
+      .from("companies")
+      .select(
+        "id, revenue_usd, revenue_source, headcount, headcount_source, credit_rating, has_bankruptcy, has_active_lawsuit, founded_year, headquarters, number_of_sites, ownership, creditsafe_credit_limit",
+      )
+      .in("domain", [domain, `www.${domain}`])
+      .order("last_enriched_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle(),
+    getGbpExchangeRates(),
+  ]);
 
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
   if (!data) return null;
@@ -556,7 +560,7 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
 
   return {
     companyRowId: r.id,
-    revenueUsd: r.revenue_usd,
+    revenueGbp: convertToGbp(r.revenue_usd, "usd", rates),
     revenueSource: r.revenue_source,
     headcount: r.headcount,
     headcountSource: r.headcount_source,
@@ -567,7 +571,10 @@ export async function getAccountFirmographics(companyUrl: string | null): Promis
     foundedYear: r.founded_year,
     hq: r.headquarters,
     numberOfSites: r.number_of_sites,
-    creditLimit: r.creditsafe_credit_limit,
+    // Creditsafe credit limits are stored without a currency code. The app
+    // previously displayed them as USD; we now convert them to GBP using the
+    // same feed so the accounts module is consistently in pounds.
+    creditLimitGbp: convertToGbp(r.creditsafe_credit_limit, "usd", rates),
   };
 }
 

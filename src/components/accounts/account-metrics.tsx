@@ -10,11 +10,11 @@ import { getAccountMetrics, type AccountMetrics as AccountMetricsData } from "@/
 import { type DatePreset, DATE_PRESET_LABELS, datePresetRange, toDateInputValue } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
-// `revenueUsd` is null when the exchange-rate feed is unreachable or one of
+// `revenueGbp` is null when the exchange-rate feed is unreachable or one of
 // the currencies in the mix isn't in it — falls back to the honest per-
 // currency breakdown rather than showing a wrong or missing number.
 function formatRevenue(metrics: AccountMetricsData): string {
-  return metrics.revenueUsd !== null ? formatCurrency(metrics.revenueUsd, "USD", 0) : formatMultiCurrency(metrics.revenue, 0);
+  return metrics.revenueGbp !== null ? formatCurrency(metrics.revenueGbp, "GBP", 0) : formatMultiCurrency(metrics.revenue, 0);
 }
 
 // This dataset's real rows only ever go back a handful of years — early
@@ -140,7 +140,7 @@ export function AccountMetrics({
           label="Total revenue"
           value={metrics ? formatRevenue(metrics) : "—"}
           hint={
-            metrics && metrics.revenueUsd !== null && metrics.revenue.length > 0
+            metrics && metrics.revenueGbp !== null && metrics.revenue.length > 0
               ? `Converted from ${formatMultiCurrency(metrics.revenue, 0)} at ${metrics.revenueRatesLive ? "today's" : "approximate (offline)"} rates`
               : "From placements in this date range"
           }
@@ -161,36 +161,36 @@ export function AccountMetrics({
           icon={CheckCircle2}
         />
         <MetricCard
-          label="CV cost"
-          value={metrics ? formatCurrency(metrics.cvCost, "USD", 0) : "—"}
+          label="Revenue per CV"
+          value={metrics ? formatCurrency(metrics.cvCost, "GBP", 0) : "—"}
           hint="Total revenue ÷ total CVs, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
-          label="Interview cost"
-          value={metrics ? formatCurrency(metrics.interviewCost, "USD", 0) : "—"}
+          label="Revenue per interview"
+          value={metrics ? formatCurrency(metrics.interviewCost, "GBP", 0) : "—"}
           hint="Total revenue ÷ first interviews, this date range"
           tone="teal"
           icon={Calculator}
         />
         <MetricCard
           label="Recruiter cost"
-          value={metrics ? formatCurrency(metrics.recruiterCost, "USD", 0) : "—"}
+          value={metrics ? formatCurrency(metrics.recruiterCost, "GBP", 0) : "—"}
           hint="Total CVs × CV cost (Model config)"
           tone="sky"
           icon={FileText}
         />
         <MetricCard
           label="Account management cost"
-          value={metrics ? formatCurrency(metrics.accountManagementCost, "USD", 0) : "—"}
+          value={metrics ? formatCurrency(metrics.accountManagementCost, "GBP", 0) : "—"}
           hint={`${metrics ? formatNumber(metrics.totalJobs) : "—"} jobs added × interview cost (Model config)`}
           tone="amber"
           icon={Calculator}
         />
         <MetricCard
           label="Business cost"
-          value={metrics ? formatCurrency(metrics.businessCost, "USD", 0) : "—"}
+          value={metrics ? formatCurrency(metrics.businessCost, "GBP", 0) : "—"}
           hint="Recruiter cost + account management cost"
           tone="violet"
           icon={Banknote}

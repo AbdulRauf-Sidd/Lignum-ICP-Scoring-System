@@ -15,6 +15,16 @@ function trimZero(n: number): string {
   return (Math.round(n * 10) / 10).toString();
 }
 
+export function formatGbpCompact(value: number | null): string {
+  if (value === null) return "—";
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000_000) return `${sign}£${trimZero(abs / 1_000_000_000)}B`;
+  if (abs >= 1_000_000) return `${sign}£${trimZero(abs / 1_000_000)}M`;
+  if (abs >= 1_000) return `${sign}£${trimZero(abs / 1_000)}K`;
+  return `${sign}£${abs}`;
+}
+
 export function formatGbp(value: number | null): string {
   if (value === null) return "—";
   return new Intl.NumberFormat("en-GB", {
@@ -64,7 +74,7 @@ export interface CurrencyAmount {
 // number would misrepresent the total (no conversion happens anywhere here).
 export function formatMultiCurrency(amounts: CurrencyAmount[], fractionDigits = 2): string {
   if (amounts.length === 0) return "—";
-  return amounts.map((a) => formatCurrency(a.amount, a.code ?? "USD", fractionDigits)).join(" + ");
+  return amounts.map((a) => formatCurrency(a.amount, a.code ?? "GBP", fractionDigits)).join(" + ");
 }
 
 export function formatNumber(value: number | null): string {
