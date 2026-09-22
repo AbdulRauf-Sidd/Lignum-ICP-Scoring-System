@@ -18,6 +18,7 @@ import {
   saveIcpProfile,
   deleteIcpProfile,
   setSectorTaxonomyActive,
+  createSectorTaxonomyEntry,
   saveModelSettings,
   type ModelSettingsInput,
 } from "@/app/(dashboard)/admin/config/actions";
@@ -419,6 +420,12 @@ export function ConfigWorkspace({
   const [activeTab, setActiveTab] = React.useState<string>(drafts[0]?.clientKey ?? "");
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const [pendingSectorId, setPendingSectorId] = React.useState<string | null>(null);
+  const [addingSubSectorFor, setAddingSubSectorFor] = React.useState<string | null>(null);
+  const [newSubSectorName, setNewSubSectorName] = React.useState("");
+  const [addingNewSector, setAddingNewSector] = React.useState(false);
+  const [newSectorName, setNewSectorName] = React.useState("");
+  const [newSectorSubSectorName, setNewSectorSubSectorName] = React.useState("");
+  const [creatingTaxonomy, setCreatingTaxonomy] = React.useState(false);
   const [settingsDraft, setSettingsDraft] = React.useState<ModelSettingsInput>(() => toSettingsInput(settings));
   const [savingSettings, setSavingSettings] = React.useState(false);
 
@@ -671,6 +678,57 @@ export function ConfigWorkspace({
     }
     return map;
   }, [taxonomy]);
+
+  async function addSubSector(sector: string, subSector: string) {
+    const trimmed = subSector.trim();
+    if (!trimmed) {
+      toast.error("Sub-sector name is required");
+      return;
+    }
+    const existing = taxonomyBySector.get(sector) ?? [];
+    if (existing.some((r) => r.sub_sector.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("That sub-sector already exists", { description: `${sector} already has "${trimmed}".` });
+      return;
+    }
+    setCreatingTaxonomy(true);
+    try {
+      await createSectorTaxonomyEntry(sector, trimmed);
+      toast.success(`${trimmed} added to ${sector}`);
+      setAddingSubSectorFor(null);
+      setNewSubSectorName("");
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to add sub-sector", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setCreatingTaxonomy(false);
+    }
+  }
+
+  async function addNewSector() {
+    const sector = newSectorName.trim();
+    const subSector = newSectorSubSectorName.trim();
+    if (!sector || !subSector) {
+      toast.error("Both a sector name and its first sub-sector are required");
+      return;
+    }
+    if (taxonomyBySector.has(sector)) {
+      toast.error("That sector already exists", { description: `Add sub-sectors to the existing "${sector}" group instead.` });
+      return;
+    }
+    setCreatingTaxonomy(true);
+    try {
+      await createSectorTaxonomyEntry(sector, subSector);
+      toast.success(`${sector} added`);
+      setAddingNewSector(false);
+      setNewSectorName("");
+      setNewSectorSubSectorName("");
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to add sector", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setCreatingTaxonomy(false);
+    }
+  }
 
   const activeDraft = drafts.find((d) => d.clientKey === activeTab) ?? null;
 
@@ -940,10 +998,100 @@ export function ConfigWorkspace({
                           </button>
                         </div>
                       ))}
+                      {addingSubSectorFor === sector ? (
+                        <div className="flex items-center gap-2 px-4 py-2.5">
+                          <Input
+                            autoFocus
+                            value={newSubSectorName}
+                            onChange={(e) => setNewSubSectorName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") addSubSector(sector, newSubSectorName);
+                              if (e.key === "Escape") {
+                                setAddingSubSectorFor(null);
+                                setNewSubSectorName("");
+                              }
+                            }}
+                            placeholder="New sub-sector name"
+                            className="h-8 flex-1 text-sm"
+                            disabled={creatingTaxonomy}
+                          />
+                          <Button size="sm" onClick={() => addSubSector(sector, newSubSectorName)} disabled={creatingTaxonomy}>
+                            {creatingTaxonomy && <Loader2 className="animate-spin" />}
+                            Add
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setAddingSubSectorFor(null);
+                              setNewSubSectorName("");
+                            }}
+                            disabled={creatingTaxonomy}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingSubSectorFor(sector);
+                            setNewSubSectorName("");
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent"
+                        >
+                          <Plus className="size-3.5" /> Add sub-sector
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+            {addingNewSector ? (
+              <div className="flex flex-col gap-2 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center">
+                <Input
+                  autoFocus
+                  value={newSectorName}
+                  onChange={(e) => setNewSectorName(e.target.value)}
+                  placeholder="New sector name"
+                  className="h-8 flex-1 text-sm"
+                  disabled={creatingTaxonomy}
+                />
+                <Input
+                  value={newSectorSubSectorName}
+                  onChange={(e) => setNewSectorSubSectorName(e.target.value)}
+                  placeholder="First sub-sector"
+                  className="h-8 flex-1 text-sm"
+                  disabled={creatingTaxonomy}
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={addNewSector} disabled={creatingTaxonomy}>
+                    {creatingTaxonomy && <Loader2 className="animate-spin" />}
+                    Add sector
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setAddingNewSector(false);
+                      setNewSectorName("");
+                      setNewSectorSubSectorName("");
+                    }}
+                    disabled={creatingTaxonomy}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingNewSector(true)}
+                className="flex w-full items-center justify-center gap-1.5 border-t px-3 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <Plus className="size-3.5" /> Add new sector
+              </button>
             )}
           </CardContent>
         </Card>
