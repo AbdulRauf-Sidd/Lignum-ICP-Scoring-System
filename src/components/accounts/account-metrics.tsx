@@ -7,7 +7,7 @@ import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatMultiCurrency, formatNumber } from "@/lib/format";
 import { getAccountMetrics, type AccountMetrics as AccountMetricsData } from "@/app/(dashboard)/accounts/actions";
-import { type DatePreset, DATE_PRESET_LABELS, datePresetRange, toDateInputValue } from "@/lib/date-presets";
+import { type DatePreset, DATE_PRESET_LABELS, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
 // `revenueGbp` is null when the exchange-rate feed is unreachable or one of
@@ -16,11 +16,6 @@ import { cn } from "@/lib/utils";
 function formatRevenue(metrics: AccountMetricsData): string {
   return metrics.revenueGbp !== null ? formatCurrency(metrics.revenueGbp, "GBP", 0) : formatMultiCurrency(metrics.revenue, 0);
 }
-
-// This dataset's real rows only ever go back a handful of years — early
-// enough to include everything without needing an actual "no lower bound"
-// query mode, which getAccountMetrics doesn't have.
-const EPOCH = "1970-01-01";
 
 const TONES = {
   emerald: { icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", value: "text-emerald-600 dark:text-emerald-400" },
@@ -83,17 +78,18 @@ export function AccountMetrics({
 
   const range = datePresetRange(preset, customStart, customEnd);
   // "All time" (and an not-yet-filled-in custom bound) has no real lower/upper
-  // limit — getAccountMetrics needs concrete dates, so an open end falls back
-  // to the widest possible window instead.
-  const rangeStart = range.start ?? EPOCH;
-  const rangeEnd = range.end ?? toDateInputValue(new Date());
+  // limit — null passes straight through to getAccountMetrics as an open
+  // bound, matching the accounts list's behaviour, rather than substituting
+  // a concrete "today" that would silently clip out forward-dated rows.
+  const rangeStart = range.start;
+  const rangeEnd = range.end;
 
   React.useEffect(() => {
     let cancelled = false;
-    // End date is a plain day (YYYY-MM-DD) — push it to the end of that day so
-    // the range is inclusive of everything that happened on it.
-    const startIso = new Date(`${rangeStart}T00:00:00.000Z`).toISOString();
-    const endIso = new Date(`${rangeEnd}T23:59:59.999Z`).toISOString();
+    // A plain day (YYYY-MM-DD) bound is pushed to the end of that day so the
+    // range is inclusive of everything that happened on it.
+    const startIso = rangeStart ? new Date(`${rangeStart}T00:00:00.000Z`).toISOString() : null;
+    const endIso = rangeEnd ? new Date(`${rangeEnd}T23:59:59.999Z`).toISOString() : null;
     Promise.resolve()
       .then(() => {
         if (!cancelled) setLoading(true);

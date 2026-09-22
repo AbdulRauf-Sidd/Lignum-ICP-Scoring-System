@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { SCORE_CATEGORY_LABELS } from "@/lib/constants";
 import { getAccountsMatchingDomains } from "@/lib/data/accounts";
 import { normalizeDomain } from "@/lib/domain";
+import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
 import type { Company, MatchedAccount, ScoreCategory, CandidateEntity, CompanyStatus, Tier, MatchFlag, TriageReason, FieldSource } from "@/lib/types";
 
 // Mirrors the real `companies` table — see the n8n workflow's Supabase nodes
@@ -104,6 +105,7 @@ function buildOneLineReason(row: CompanyRow, breakdown: ScoreCategory[]): string
 function mapRowToCompany(
   row: CompanyRow,
   breakdownRow: ScoringBreakdownRow | null,
+  rates: Record<string, number>,
   matchedAccounts: MatchedAccount[] = [],
 ): Company {
   const scoringBreakdown = breakdownRow ? buildScoringBreakdown(breakdownRow) : [];
@@ -122,13 +124,15 @@ function mapRowToCompany(
     score: row.score,
     confidence: row.classification_confidence,
     scoringBreakdown,
-    revenueUsd: row.revenue_usd,
+    // Converted to GBP with the same feed/API as the accounts module
+    // (getGbpExchangeRates + convertToGbp) — previously shown raw in USD.
+    revenueGbp: convertToGbp(row.revenue_usd, "usd", rates),
     revenueSource: row.revenue_source,
     headcount: row.headcount,
     headcountSource: row.headcount_source,
     hiringEventCount: row.hiring_event_count,
     creditsafeRiskScore: row.creditsafe_risk_score,
-    creditsafeCreditLimit: row.creditsafe_credit_limit,
+    creditsafeCreditLimitGbp: convertToGbp(row.creditsafe_credit_limit, "usd", rates),
     country: "",
     importedBy: row.imported_by ?? "—",
     importedAt: row.created_at,
@@ -182,13 +186,13 @@ export async function getScoredCompanies(search?: string): Promise<Company[]> {
   if (search) {
     query = query.ilike("name", `%${search}%`);
   }
-  const { data, error } = await query;
+  const [{ data, error }, { rates }] = await Promise.all([query, getGbpExchangeRates()]);
 
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
 
   const rows = (data ?? []) as CompanyRow[];
   const breakdowns = await getLatestBreakdownsByCompanyId(rows.map((r) => r.id));
-  return rows.map((row) => mapRowToCompany(row, breakdowns.get(row.id) ?? null));
+  return rows.map((row) => mapRowToCompany(row, breakdowns.get(row.id) ?? null, rates));
 }
 
 export async function getTriageCount(): Promise<number> {
@@ -325,12 +329,13 @@ export async function getTriageCompanies(): Promise<Company[]> {
   if (error) throw new Error(`Failed to load companies: ${error.message}`);
 
   const rows = (data ?? []) as CompanyRow[];
-  const [breakdowns, accountsByDomain] = await Promise.all([
+  const [breakdowns, accountsByDomain, { rates }] = await Promise.all([
     getLatestBreakdownsByCompanyId(rows.map((r) => r.id)),
     getAccountsMatchingDomains(rows.filter((r) => r.triage_reason === "move_to_accounts").map((r) => r.domain)),
+    getGbpExchangeRates(),
   ]);
   return rows.map((row) =>
-    mapRowToCompany(row, breakdowns.get(row.id) ?? null, accountsByDomain.get(normalizeDomain(row.domain)) ?? []),
+    mapRowToCompany(row, breakdowns.get(row.id) ?? null, rates, accountsByDomain.get(normalizeDomain(row.domain)) ?? []),
   );
 }
 
@@ -375,11 +380,10 @@ export async function getHomeStats(): Promise<HomeStats> {
 
 export async function getCompanyById(id: string): Promise<Company | null> {
   const supabase = getSupabaseServerClient();
-  const { data: companyRow, error: companyError } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data: companyRow, error: companyError }, { rates }] = await Promise.all([
+    supabase.from("companies").select("*").eq("id", id).maybeSingle(),
+    getGbpExchangeRates(),
+  ]);
 
   if (companyError) throw new Error(`Failed to load company: ${companyError.message}`);
   if (!companyRow) return null;
@@ -393,5 +397,5 @@ export async function getCompanyById(id: string): Promise<Company | null> {
 
   if (breakdownError) throw new Error(`Failed to load scoring_breakdown: ${breakdownError.message}`);
 
-  return mapRowToCompany(companyRow as CompanyRow, (breakdownRows?.[0] as ScoringBreakdownRow) ?? null);
+  return mapRowToCompany(companyRow as CompanyRow, (breakdownRows?.[0] as ScoringBreakdownRow) ?? null, rates);
 }

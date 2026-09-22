@@ -211,23 +211,43 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
   const tierJobKeys = new Set(tierJobRows.map((row) => `${row.company_id}:${row.job_id}`));
-  const revenueByCompany = new Map<number, number>();
+  // Keep each company's revenue separate by source currency before converting,
+  // exactly as getAccountMetrics does for the company detail view. In
+  // particular, an unconvertible currency invalidates that company's GBP
+  // total; silently omitting it would make the list's revenue-per-CV and
+  // revenue-per-interview values disagree with the detail view.
+  const revenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
   for (const placement of placementRows) {
     if (!tierJobKeys.has(`${placement.company_id}:${placement.job_id}`)) continue;
 
     const revenue = calculatePlacementRevenue(placement);
     if (revenue === null) continue;
-    const revenueGbp = convertToGbp(revenue, placement.currency?.code ?? null, rates);
-    if (revenueGbp === null) continue;
 
-    revenueByCompany.set(placement.company_id, (revenueByCompany.get(placement.company_id) ?? 0) + revenueGbp);
+    const code = placement.currency?.code ?? null;
+    const companyRevenue = revenueByCompanyCurrency.get(placement.company_id) ?? new Map<string | null, number>();
+    companyRevenue.set(code, (companyRevenue.get(code) ?? 0) + revenue);
+    revenueByCompanyCurrency.set(placement.company_id, companyRevenue);
+  }
+
+  const revenueByCompany = new Map<number, number | null>();
+  for (const [companyId, revenueByCurrency] of revenueByCompanyCurrency) {
+    let revenueGbp: number | null = 0;
+    for (const [code, amount] of revenueByCurrency) {
+      const converted = convertToGbp(amount, code, rates);
+      if (converted === null) {
+        revenueGbp = null;
+        break;
+      }
+      revenueGbp += converted;
+    }
+    revenueByCompany.set(companyId, revenueGbp);
   }
 
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
   const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
 
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => {
-    const totalRevenue = revenueByCompany.get(r.company_id) ?? 0;
+    const totalRevenue = revenueByCompany.has(r.company_id) ? (revenueByCompany.get(r.company_id) ?? null) : 0;
     const cvCount = cvCountByCompany.get(r.company_id) ?? 0;
     const interviewCount = interviewCountByCompany.get(r.company_id) ?? 0;
     return {
@@ -235,8 +255,8 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       companyName: r.company_name,
       status: r.status,
       // Revenue per CV / per first interview — null when there are none.
-      cvCost: cvCount > 0 ? totalRevenue / cvCount : null,
-      interviewCost: interviewCount > 0 ? totalRevenue / interviewCount : null,
+      cvCost: totalRevenue !== null && cvCount > 0 ? totalRevenue / cvCount : null,
+      interviewCost: totalRevenue !== null && interviewCount > 0 ? totalRevenue / interviewCount : null,
       ownedBy: r.owned_by,
       totalRevenue,
       revenueCurrencyCode: "GBP",
