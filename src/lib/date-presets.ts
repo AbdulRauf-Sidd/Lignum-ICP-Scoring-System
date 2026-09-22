@@ -59,8 +59,11 @@ export function datePresetRange(preset: DatePreset, customStart: string, customE
       return { start: toDateInputValue(daysAgo(60)), end: today };
     case "last_90":
       return { start: toDateInputValue(daysAgo(90)), end: today };
-    case "this_month":
-      return { start: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1)), end: today };
+    case "this_month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { start: toDateInputValue(start), end: toDateInputValue(end) };
+    }
     case "last_month": {
       const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const end = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -68,7 +71,9 @@ export function datePresetRange(preset: DatePreset, customStart: string, customE
     }
     case "this_quarter": {
       const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
-      return { start: toDateInputValue(new Date(now.getFullYear(), qStartMonth, 1)), end: today };
+      const start = new Date(now.getFullYear(), qStartMonth, 1);
+      const end = new Date(now.getFullYear(), qStartMonth + 3, 0);
+      return { start: toDateInputValue(start), end: toDateInputValue(end) };
     }
     case "last_quarter": {
       const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
@@ -77,7 +82,10 @@ export function datePresetRange(preset: DatePreset, customStart: string, customE
       return { start: toDateInputValue(start), end: toDateInputValue(end) };
     }
     case "this_year":
-      return { start: toDateInputValue(new Date(now.getFullYear(), 0, 1)), end: today };
+      return {
+        start: toDateInputValue(new Date(now.getFullYear(), 0, 1)),
+        end: toDateInputValue(new Date(now.getFullYear(), 11, 31)),
+      };
     case "last_year":
       return {
         start: toDateInputValue(new Date(now.getFullYear() - 1, 0, 1)),
