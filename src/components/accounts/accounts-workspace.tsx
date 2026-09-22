@@ -155,7 +155,7 @@ function AccountDetail({
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-semibold">{header.companyName}</h2>
                 <Badge variant="outline" className={cn("border-transparent", meta.badge)}>
-                  {header.status}
+                  Current Client
                 </Badge>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
