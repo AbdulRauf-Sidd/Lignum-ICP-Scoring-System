@@ -165,7 +165,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
     const escapeCsv = (value: string | null | undefined) => '"' + (value ?? "").replace(/"/g, '""') + '"';
     const rows = selectedRedeemed.map((contact) => [
       contact.name, contact.title, companyNames.get(contact.company_id) ?? "",
-      contact.email, contact.phone, "", "",
+      contact.email, contact.phone, contact.mobile, contact.linkedin_url,
     ]);
     const csv = [columns, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
@@ -391,9 +391,19 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                             </span>
                             <span className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                               <Phone className="size-3.5 opacity-0" />
-                              <span className="text-[10px]">MOB</span> —
+                              <span className="text-[10px]">MOB</span> {ct.mobile ?? "—"}
                             </span>
                           </div>
+                          {ct.linkedin_url && (
+                            <a
+                              href={ct.linkedin_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-primary underline-offset-4 hover:underline"
+                            >
+                              LinkedIn
+                            </a>
+                          )}
                           {ct.status !== "listed" && (
                             <Badge
                               variant="outline"
