@@ -83,14 +83,14 @@ function PillGroup<T extends string>({
   options: { value: T; label: string }[];
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+    <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cn(
             "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-            value === o.value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+            value === o.value ? "bg-background shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
           )}
         >
           {o.label}
@@ -108,7 +108,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = React.useState<"score" | "tier" | "name">("score");
   const [qualityFilter, setQualityFilter] = React.useState<"all" | NonNullable<EmailQuality>>("all");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | "redeemed">("all");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | "redeemed" | "not_redeemed">("all");
   const [findingCompanyId, setFindingCompanyId] = React.useState<string | null>(null);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const busy = findingCompanyId !== null || pendingKey !== null;
@@ -119,7 +119,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       company,
       contacts: contacts
         .filter((ct) => ct.company_id === company.id)
-        .filter((ct) => statusFilter === "all" || ct.status === "redeemed")
+        .filter((ct) => statusFilter === "all" || (statusFilter === "redeemed" ? ct.status === "redeemed" : ct.status !== "redeemed"))
         .filter((ct) => qualityFilter === "all" || ct.email_quality === qualityFilter),
     }))
     .sort((a, b) => {
@@ -244,7 +244,15 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Status</span>
-          <PillGroup value={statusFilter} onChange={setStatusFilter} options={[{ value: "all", label: "All" }, { value: "redeemed", label: "Redeemed" }]} />
+          <PillGroup
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "redeemed", label: "Redeemed" },
+              { value: "not_redeemed", label: "Not redeemed" },
+            ]}
+          />
         </div>
         {companyFilter && (
           <Badge variant="outline" className="gap-1.5">
