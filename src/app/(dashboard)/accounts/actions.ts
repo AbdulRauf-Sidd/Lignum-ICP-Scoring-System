@@ -92,7 +92,13 @@ function placementRevenue(row: PlacementRow): number | null {
   return null;
 }
 
-export async function getAccountMetrics(companyId: number, startDate: string, endDate: string): Promise<AccountMetrics> {
+// startDate/endDate are inclusive ISO bounds, or null for an open end (e.g.
+// "All time") — matches getAccountsList's DateRange so the two pages can't
+// silently disagree about what "no upper bound" means. Previously the caller
+// substituted a concrete "today" for an open end, which clipped out any row
+// whose created_at is after today (e.g. a placement logged with a
+// forward-dated created_at) even under "All time".
+export async function getAccountMetrics(companyId: number, startDate: string | null, endDate: string | null): Promise<AccountMetrics> {
   const supabase = getSupabaseServerClient();
 
   // Placements remain scoped to Tier 1 / Tier 2 jobs. CV and interview event
@@ -105,21 +111,24 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
   const jobIds = (jobRows ?? []).map((r) => r.job_id as number);
+  const startMs = startDate ? new Date(startDate).getTime() : -Infinity;
+  const endMs = endDate ? new Date(endDate).getTime() : Infinity;
   const totalJobs = (jobRows ?? []).filter((r) => {
     const t = new Date(r.created_at as string).getTime();
-    return t >= new Date(startDate).getTime() && t <= new Date(endDate).getTime();
+    return t >= startMs && t <= endMs;
   }).length;
   const fetchEventPages = async (activityKeys: string[], metricName: string): Promise<EventRow[]> => {
     const allRows: EventRow[] = [];
 
     for (let offset = 0; ; offset += EVENT_PAGE_SIZE) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("active_accounts_jobs_candidates_events")
         .select("job_id, person_id, activity_key")
         .eq("company_id", companyId)
-        .in("activity_key", activityKeys)
-        .gte("created_at", startDate)
-        .lte("created_at", endDate)
+        .in("activity_key", activityKeys);
+      if (startDate) query = query.gte("created_at", startDate);
+      if (endDate) query = query.lte("created_at", endDate);
+      const { data, error } = await query
         .order("event_id", { ascending: true })
         .range(offset, offset + EVENT_PAGE_SIZE - 1);
       if (error) throw new Error(`Failed to load ${metricName} metrics: ${error.message}`);
@@ -133,25 +142,24 @@ export async function getAccountMetrics(companyId: number, startDate: string, en
   const cvEventsPromise = fetchEventPages([CV_ACTIVITY_KEY], "CV");
   const interviewEventsPromise = fetchEventPages(FIRST_INTERVIEW_ACTIVITY_KEYS, "first interview");
 
+  const fetchPlacements = () => {
+    if (jobIds.length === 0) return Promise.resolve({ data: [], error: null });
+    let query = supabase
+      .from("active_accounts_placements")
+      .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
+      .eq("company_id", companyId)
+      .in("job_id", jobIds);
+    if (startDate) query = query.gte("created_at", startDate);
+    if (endDate) query = query.lte("created_at", endDate);
+    return query;
+  };
+
   const [
     cvRows,
     interviewRows,
     { data: placementRows, error: placementsError },
     modelSettings,
-  ] = await Promise.all([
-    cvEventsPromise,
-    interviewEventsPromise,
-    jobIds.length > 0
-      ? supabase
-          .from("active_accounts_placements")
-          .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
-          .eq("company_id", companyId)
-          .in("job_id", jobIds)
-          .gte("created_at", startDate)
-          .lte("created_at", endDate)
-      : Promise.resolve({ data: [], error: null }),
-    getModelSettings(),
-  ]);
+  ] = await Promise.all([cvEventsPromise, interviewEventsPromise, fetchPlacements(), getModelSettings()]);
 
   if (placementsError) throw new Error(`Failed to load placements: ${placementsError.message}`);
 

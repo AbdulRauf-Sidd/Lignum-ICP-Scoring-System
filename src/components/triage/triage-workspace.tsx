@@ -17,7 +17,7 @@ import {
 import { ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import { CompanyAvatar } from "@/components/shared/company-avatar";
-import { formatUsdCompact, formatNumber } from "@/lib/format";
+import { formatGbpCompact, formatNumber } from "@/lib/format";
 import type { Company, TriageReason } from "@/lib/types";
 import type { IcpProfileRow, SectorTaxonomyRow } from "@/lib/data/icp-profiles";
 import { normalizeDomain } from "@/lib/domain";
@@ -436,7 +436,7 @@ function TriageCard({
                 </Badge>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {formatUsdCompact(company.revenueUsd)} rev
+                {formatGbpCompact(company.revenueGbp)} rev
                 {company.revenueSource === "creditsafe" && (
                   <span className="ml-1 text-[10px] text-muted-foreground/70" title="Sourced from Creditsafe fallback">
                     (CS)

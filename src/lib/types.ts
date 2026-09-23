@@ -81,7 +81,7 @@ export interface Company {
   score: number | null;
   confidence: number | null;
   scoringBreakdown: ScoreCategory[];
-  revenueUsd: number | null;
+  revenueGbp: number | null;
   revenueSource: FieldSource | null;
   headcount: number | null;
   headcountSource: FieldSource | null;
@@ -89,7 +89,7 @@ export interface Company {
   // Creditsafe's "Company Recommendation" score, feeding the credit_risk
   // scoring category. creditLimit is display-only, never scored.
   creditsafeRiskScore: number | null;
-  creditsafeCreditLimit: number | null;
+  creditsafeCreditLimitGbp: number | null;
   country: string;
   importedBy: string;
   importedAt: string;

@@ -541,9 +541,9 @@ export function AccountsList({
                   >
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.totalRevenue, "USD", 0)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.cvCost, "USD", 0)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.interviewCost, "USD", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.totalRevenue, "GBP", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.cvCost, "GBP", 0)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(a.interviewCost, "GBP", 0)}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>
                       <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />

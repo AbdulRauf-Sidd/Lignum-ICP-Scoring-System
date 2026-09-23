@@ -23,7 +23,7 @@ function activityMeta(key: string): { label: string; className: string } {
 function feeDisplay(job: AccountJob): string {
   if (job.fee === null) return "—";
   if (job.feeTypeKey === "percentage") return `${Math.round(job.fee)}%`;
-  const amount = formatCurrency(job.fee, job.feeCurrencyCode ?? "USD", 0);
+  const amount = formatCurrency(job.fee, job.feeCurrencyCode ?? "GBP", 0);
   return job.feeTypeKey ? `${amount} (${job.feeTypeKey})` : amount;
 }
 

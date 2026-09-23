@@ -16,7 +16,7 @@ import { getIcpAvatarClass } from "@/lib/icp-colors";
 import { ScoreBar, ScoreRing } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge, SectorBadge } from "@/components/shared/badges";
 import { CompanyAvatar } from "@/components/shared/company-avatar";
-import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
+import { formatGbpCompact, formatNumber, formatDate } from "@/lib/format";
 import type { Company } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -581,7 +581,7 @@ function TargetListRow({
       ) : (
         <>
           <TableCell className="tabular-nums text-muted-foreground">
-            {formatUsdCompact(company.revenueUsd)}
+            {formatGbpCompact(company.revenueGbp)}
             {company.revenueSource === "creditsafe" && <FallbackMarker />}
           </TableCell>
           <TableCell className="tabular-nums text-muted-foreground">

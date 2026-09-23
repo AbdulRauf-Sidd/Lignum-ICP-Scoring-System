@@ -16,7 +16,7 @@ import { ScoreRing, ScoreBar } from "@/components/shared/score-display";
 import { TierBadge, MatchFlagBadge } from "@/components/shared/badges";
 import { CompanyAvatar } from "@/components/shared/company-avatar";
 import { PageHeader } from "@/components/shared/page-header";
-import { formatUsdCompact, formatNumber, formatDate } from "@/lib/format";
+import { formatGbpCompact, formatNumber, formatDate } from "@/lib/format";
 
 export default async function CompanyDetailPage({ params }: PageProps<"/target-list/[id]">) {
   const { id } = await params;
@@ -129,7 +129,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                   <TableBody>
                     <TableRow>
                       <TableCell>Annual revenue</TableCell>
-                      <TableCell>{formatUsdCompact(company.revenueUsd)}</TableCell>
+                      <TableCell>{formatGbpCompact(company.revenueGbp)}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{company.revenueSource ?? "—"}</Badge>
                       </TableCell>
@@ -157,7 +157,7 @@ export default async function CompanyDetailPage({ params }: PageProps<"/target-l
                     </TableRow>
                     <TableRow>
                       <TableCell>Credit limit</TableCell>
-                      <TableCell>{formatUsdCompact(company.creditsafeCreditLimit)}</TableCell>
+                      <TableCell>{formatGbpCompact(company.creditsafeCreditLimitGbp)}</TableCell>
                       <TableCell>
                         <Badge variant="outline">creditsafe</Badge>
                       </TableCell>
