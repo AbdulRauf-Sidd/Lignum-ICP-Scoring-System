@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
-import { Mail, Phone, Search, Sparkles, X, Loader2 } from "lucide-react";
+import { Download, Mail, Phone, Search, Sparkles, X, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -108,6 +108,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = React.useState<"score" | "tier" | "name">("score");
   const [qualityFilter, setQualityFilter] = React.useState<"all" | NonNullable<EmailQuality>>("all");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | "redeemed">("all");
   const [findingCompanyId, setFindingCompanyId] = React.useState<string | null>(null);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const busy = findingCompanyId !== null || pendingKey !== null;
@@ -118,6 +119,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       company,
       contacts: contacts
         .filter((ct) => ct.company_id === company.id)
+        .filter((ct) => statusFilter === "all" || ct.status === "redeemed")
         .filter((ct) => qualityFilter === "all" || ct.email_quality === qualityFilter),
     }))
     .sort((a, b) => {
@@ -127,7 +129,9 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       return (tierRank[a.company.tier ?? "C"] ?? 3) - (tierRank[b.company.tier ?? "C"] ?? 3);
     });
 
-  const selectableIds = groups.flatMap((g) => g.contacts.filter((c) => c.status === "listed").map((c) => c.id));
+  const selectableIds = groups.flatMap((g) => g.contacts.filter((c) => c.status === "listed" || c.status === "redeemed").map((c) => c.id));
+  const selectedListed = contacts.filter((c) => selected.has(c.id) && c.status === "listed");
+  const selectedRedeemed = contacts.filter((c) => selected.has(c.id) && c.status === "redeemed");
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
 
   const allContacts = companyFilter ? contacts.filter((c) => c.company_id === companyFilter) : contacts;
@@ -153,6 +157,23 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       ids.forEach((id) => (allIn ? next.delete(id) : next.add(id)));
       return next;
     });
+  }
+
+  function exportSelectedRedeemed() {
+    const companyNames = new Map(companies.map((company) => [company.id, company.name]));
+    const columns = ["Full Name", "Job Title", "Company", "Email", "Direct", "Mobile", "LinkedIn URL"];
+    const escapeCsv = (value: string | null | undefined) => '"' + (value ?? "").replace(/"/g, '""') + '"';
+    const rows = selectedRedeemed.map((contact) => [
+      contact.name, contact.title, companyNames.get(contact.company_id) ?? "",
+      contact.email, contact.phone, "", "",
+    ]);
+    const csv = [columns, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "redeemed-contacts.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleFindContacts(company: Company) {
@@ -221,6 +242,10 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
             ]}
           />
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Status</span>
+          <PillGroup value={statusFilter} onChange={setStatusFilter} options={[{ value: "all", label: "All" }, { value: "redeemed", label: "Redeemed" }]} />
+        </div>
         {companyFilter && (
           <Badge variant="outline" className="gap-1.5">
             Filtered to one company
@@ -240,19 +265,23 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
               Select all ({selectableIds.length})
             </Label>
           </div>
+          <Button variant="outline" onClick={exportSelectedRedeemed} disabled={selectedRedeemed.length === 0}>
+            <Download />
+            Export redeemed ({selectedRedeemed.length})
+          </Button>
           <Button
-            onClick={() => redeem("bulk", contacts.filter((c) => selected.has(c.id)))}
-            disabled={selected.size === 0 || busy}
+            onClick={() => redeem("bulk", selectedListed)}
+            disabled={selectedListed.length === 0 || busy}
           >
             {pendingKey === "bulk" ? <Loader2 className="size-4 animate-spin" /> : <Sparkles />}
-            Enrich selected ({selected.size})
+            Enrich selected ({selectedListed.length})
           </Button>
         </div>
       </div>
 
       <div className="flex flex-col gap-5">
         {groups.map(({ company, contacts: groupContacts }) => {
-          const ids = groupContacts.filter((c) => c.status === "listed").map((c) => c.id);
+          const ids = groupContacts.filter((c) => c.status === "listed" || c.status === "redeemed").map((c) => c.id);
           const groupAllSelected = ids.length > 0 && ids.every((id) => selected.has(id));
           const isFinding = findingCompanyId === company.id;
           const groupEnrichedCount = groupContacts.filter((c) => c.status === "redeemed").length;
@@ -317,7 +346,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                           className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3.5", i > 0 && "border-t")}
                         >
                           <div className="w-5 shrink-0">
-                            {ct.status === "listed" && (
+                            {(ct.status === "listed" || ct.status === "redeemed") && (
                               <Checkbox checked={selected.has(ct.id)} onCheckedChange={() => toggleOne(ct.id)} />
                             )}
                           </div>
