@@ -384,7 +384,6 @@ function toSettingsInput(row: ModelSettingsRow): ModelSettingsInput {
     soft_rule_penalty: row.soft_rule_penalty,
     hard_rule_penalty: row.hard_rule_penalty,
     contact_pull_on_demand: row.contact_pull_on_demand,
-    indicative_price_per_credit: row.indicative_price_per_credit,
     cv_cost: row.cv_cost,
     interview_cost: row.interview_cost,
     auto_repull_enabled: row.auto_repull_enabled,
@@ -1185,32 +1184,6 @@ export function ConfigWorkspace({
                   />
                   <span className="text-sm text-muted-foreground">points off ICP fit</span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Enrichment run settings</CardTitle>
-              <CardDescription>Used to estimate cost before an enrichment run.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-end gap-6">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Indicative price per credit</Label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted-foreground">£</span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    className="h-8 w-24"
-                    placeholder="—"
-                    value={settingsDraft.indicative_price_per_credit ?? ""}
-                    disabled={savingSettings}
-                    onChange={(e) => updateSettings({ indicative_price_per_credit: e.target.value === "" ? null : Number(e.target.value) })}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Leave blank to hide the £ figure</p>
               </div>
             </CardContent>
           </Card>

@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatUsd, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { useChartPalette } from "@/hooks/use-chart-palette";
 import type { UsageRunDetail } from "@/lib/data/usage";
 import { summarizeUsageRuns } from "@/lib/data/usage";
@@ -52,13 +52,7 @@ function groupByCompany(items: UsageRunDetail["items"]): CompanyBreakdown[] {
   return Array.from(map.values());
 }
 
-export function UsageWorkspace({
-  runs,
-  indicativePricePerCredit,
-}: {
-  runs: UsageRunDetail[];
-  indicativePricePerCredit: number | null;
-}) {
+export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const palette = useChartPalette();
 
@@ -89,14 +83,6 @@ export function UsageWorkspace({
                 <span className="text-[13px] text-muted-foreground">credits across all activity</span>
               </div>
             </div>
-            {indicativePricePerCredit !== null && (
-              <div className="flex items-center gap-2 rounded-[10px] border bg-muted/40 px-3.5 py-2 text-[13px]">
-                <b className="font-semibold">{formatUsd(summary.totalCredits * indicativePricePerCredit)}</b>
-                <span className="font-mono text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  Indicative
-                </span>
-              </div>
-            )}
           </div>
 
           {actionEntries.length === 0 ? (

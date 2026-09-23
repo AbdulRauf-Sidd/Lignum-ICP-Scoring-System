@@ -8,7 +8,6 @@ export interface ModelSettingsRow {
   soft_rule_penalty: number;
   hard_rule_penalty: number;
   contact_pull_on_demand: boolean;
-  indicative_price_per_credit: number | null;
   cv_cost: number | null;
   interview_cost: number | null;
   auto_repull_enabled: boolean;
@@ -41,7 +40,6 @@ const DEFAULTS: Omit<ModelSettingsRow, "id" | "updated_at"> = {
   soft_rule_penalty: 20,
   hard_rule_penalty: 60,
   contact_pull_on_demand: true,
-  indicative_price_per_credit: null,
   cv_cost: null,
   interview_cost: null,
   auto_repull_enabled: false,
