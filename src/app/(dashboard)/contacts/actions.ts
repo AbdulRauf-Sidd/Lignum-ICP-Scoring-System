@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getSessionUser } from "@/lib/supabase/auth-server";
 
 export async function findContacts(companyId: string, domain: string) {
   const webhookUrl = process.env.N8N_CONTACT_SEARCH_WEBHOOK_URL;
@@ -58,8 +59,11 @@ export async function bulkRedeemContacts(items: RedeemItem[]) {
     throw new Error("Contact redeem webhook is not configured. Set N8N_CONTACT_REDEEM_WEBHOOK_URL.");
   }
 
+  const user = await getSessionUser();
+
   const payload = {
     redeems: items.map((i) => ({ contact_id: i.contactId, redeem_id: i.redeemId, company_id: i.companyId })),
+    run_by: user?.name ?? null,
   };
 
   let upstream: Response;

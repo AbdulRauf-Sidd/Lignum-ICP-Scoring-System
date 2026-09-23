@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/auth-server";
 
 export async function approveCompany(companyId: string, sector: string, subSector: string) {
   const supabase = getSupabaseServerClient();
@@ -109,10 +110,13 @@ export async function confirmEntityResolution(
     throw new Error("Resolve webhook is not configured. Set N8N_RESOLVE_WEBHOOK_URL and N8N_WEBHOOK_SECRET.");
   }
 
+  const user = await getSessionUser();
+
   const payload = {
     company_id: companyId,
     ...(candidate.creditsafeCompanyId ? { creditsafe_company_id: candidate.creditsafeCompanyId } : {}),
     ...(candidate.cognismCompanyId ? { cognism_company_id: candidate.cognismCompanyId } : {}),
+    run_by: user?.name ?? null,
   };
 
   let upstream: Response;

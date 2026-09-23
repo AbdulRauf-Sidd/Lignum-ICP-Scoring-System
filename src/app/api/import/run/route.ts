@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/supabase/auth-server";
 
 const WEBHOOK_SECRET_HEADER = "X-Lignum-Webhook-Secret";
 
@@ -47,6 +48,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const user = await getSessionUser();
+
   let upstream: Response;
   try {
     upstream = await fetch(webhookUrl, {
@@ -55,7 +58,7 @@ export async function POST(request: NextRequest) {
         [WEBHOOK_SECRET_HEADER]: webhookSecret,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, run_by: user?.name ?? null }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
