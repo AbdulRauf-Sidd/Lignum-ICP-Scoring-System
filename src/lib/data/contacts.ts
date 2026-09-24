@@ -16,6 +16,8 @@ export interface ContactRow {
   email_source: DetailSource | null;
   email_quality: EmailQuality;
   phone: string | null;
+  mobile: string | null;
+  linkedin_url: string | null;
   phone_source: DetailSource | null;
   cognism_contact_id: string | null;
   cognism_redeem_id: string | null;
