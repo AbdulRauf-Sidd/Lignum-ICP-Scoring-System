@@ -63,7 +63,7 @@ export async function bulkRedeemContacts(items: RedeemItem[]) {
 
   const payload = {
     redeems: items.map((i) => ({ contact_id: i.contactId, redeem_id: i.redeemId, company_id: i.companyId })),
-    run_by: user?.name ?? null,
+    run_by: user?.id ?? null,
   };
 
   let upstream: Response;
