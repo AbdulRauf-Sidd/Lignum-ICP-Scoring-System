@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { useChartPalette } from "@/hooks/use-chart-palette";
@@ -52,9 +53,19 @@ function groupByCompany(items: UsageRunDetail["items"]): CompanyBreakdown[] {
   return Array.from(map.values());
 }
 
+const PAGE_SIZE = 10;
+
 export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const [page, setPage] = React.useState(1);
   const palette = useChartPalette();
+
+  const totalPages = Math.max(1, Math.ceil(runs.length / PAGE_SIZE));
+  React.useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const visibleRuns = runs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const summary = summarizeUsageRuns(runs);
   const actionEntries = Object.entries(summary.actionCredits).sort((a, b) => b[1] - a[1]);
@@ -127,81 +138,103 @@ export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
             <CardContent className="py-10 text-center text-sm text-muted-foreground">No runs yet.</CardContent>
           </Card>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {runs.map((run) => {
-              const isOpen = expanded.has(run.id);
-              const runCredits = run.items.reduce((sum, item) => sum + (item.creditsUsed ?? 0), 0);
-              const companies = groupByCompany(run.items);
-              const reportsCount = companies.filter((c) => c.creditsafeCredits > 0).length;
-              const cognismCredits = companies.reduce((sum, c) => sum + c.cognismCredits, 0);
-              const metaParts = [`${run.companyCount} compan${run.companyCount === 1 ? "y" : "ies"}`];
-              if (reportsCount > 0) metaParts.push(`${reportsCount} report${reportsCount === 1 ? "" : "s"}`);
-              if (cognismCredits > 0) metaParts.push(`${cognismCredits} Cognism credit${cognismCredits === 1 ? "" : "s"}`);
-              if (reportsCount === 0 && cognismCredits === 0) {
-                // n8n marks a run "completed" once its last node finishes, but a
-                // handful of code paths still don't reach that node (see the
-                // handover notes) -- `run.isStale` (computed server-side) catches
-                // an "in progress" that's old enough to be stale rather than
-                // genuinely still running.
-                metaParts.push(run.isStale ? "no billable activity" : run.status.replace(/_/g, " "));
-              }
-              return (
-                <Card key={run.id} className="gap-0 overflow-hidden py-0">
-                  <button
-                    onClick={() => toggle(run.id)}
-                    className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left hover:bg-muted/30"
-                  >
-                    <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-90")} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">{runTitle(run.run_type)}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{metaParts.join(" · ")}</p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-mono text-sm font-semibold">{runCredits} cr</p>
-                      <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{formatDateTime(run.started_at)}</p>
-                    </div>
-                    <div className="w-[130px] shrink-0 text-right">
-                      <p className="text-[11px] text-muted-foreground">run by</p>
-                      <p className="text-[12.5px] font-medium text-foreground/80">{run.run_by ?? "—"}</p>
-                    </div>
-                  </button>
-                  {isOpen && (
-                    <div className="border-t bg-muted/20 px-4 py-3 pl-[53px]">
-                      {companies.length === 0 ? (
-                        <p className="py-4 text-center text-sm text-muted-foreground">No line items for this run.</p>
-                      ) : (
-                        <div>
-                          <div className="grid grid-cols-[1.6fr_1fr_1fr_96px] gap-3 py-2 font-mono text-[9.5px] tracking-wide text-muted-foreground uppercase">
-                            <span>Company</span>
-                            <span>Creditsafe</span>
-                            <span>Cognism</span>
-                            <span>Result</span>
-                          </div>
-                          {companies.map((c) => (
-                            <div
-                              key={c.companyId}
-                              className="grid grid-cols-[1.6fr_1fr_1fr_96px] items-center gap-3 border-t py-2"
-                            >
-                              <span className="truncate text-[13px] font-medium">{c.companyName}</span>
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {c.creditsafeCredits > 0 ? `${c.creditsafeCredits} cr` : "—"}
-                              </span>
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {c.cognismCredits > 0 ? `${c.cognismCredits} cr` : "—"}
-                              </span>
-                              <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">
-                                {c.skipped ? "Skipped" : "Redeemed"}
-                              </Badge>
+          <>
+            <div className="flex flex-col gap-2.5">
+              {visibleRuns.map((run) => {
+                const isOpen = expanded.has(run.id);
+                const runCredits = run.items.reduce((sum, item) => sum + (item.creditsUsed ?? 0), 0);
+                const companies = groupByCompany(run.items);
+                const reportsCount = companies.filter((c) => c.creditsafeCredits > 0).length;
+                const cognismCredits = companies.reduce((sum, c) => sum + c.cognismCredits, 0);
+                const metaParts = [`${run.companyCount} compan${run.companyCount === 1 ? "y" : "ies"}`];
+                if (reportsCount > 0) metaParts.push(`${reportsCount} report${reportsCount === 1 ? "" : "s"}`);
+                if (cognismCredits > 0) metaParts.push(`${cognismCredits} Cognism credit${cognismCredits === 1 ? "" : "s"}`);
+                if (reportsCount === 0 && cognismCredits === 0) {
+                  // n8n marks a run "completed" once its last node finishes, but a
+                  // handful of code paths still don't reach that node (see the
+                  // handover notes) -- `run.isStale` (computed server-side) catches
+                  // an "in progress" that's old enough to be stale rather than
+                  // genuinely still running.
+                  metaParts.push(run.isStale ? "no billable activity" : run.status.replace(/_/g, " "));
+                }
+                return (
+                  <Card key={run.id} className="gap-0 overflow-hidden py-0">
+                    <button
+                      onClick={() => toggle(run.id)}
+                      className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left hover:bg-muted/30"
+                    >
+                      <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-90")} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{runTitle(run.run_type)}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{metaParts.join(" · ")}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-mono text-sm font-semibold">{runCredits} cr</p>
+                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{formatDateTime(run.started_at)}</p>
+                      </div>
+                      <div className="w-[130px] shrink-0 text-right">
+                        <p className="text-[11px] text-muted-foreground">run by</p>
+                        <p className="text-[12.5px] font-medium text-foreground/80">{run.run_by ?? "—"}</p>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t bg-muted/20 px-4 py-3 pl-[53px]">
+                        {companies.length === 0 ? (
+                          <p className="py-4 text-center text-sm text-muted-foreground">No line items for this run.</p>
+                        ) : (
+                          <div>
+                            <div className="grid grid-cols-[1.6fr_1fr_1fr_96px] gap-3 py-2 font-mono text-[9.5px] tracking-wide text-muted-foreground uppercase">
+                              <span>Company</span>
+                              <span>Creditsafe</span>
+                              <span>Cognism</span>
+                              <span>Result</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+                            {companies.map((c) => (
+                              <div
+                                key={c.companyId}
+                                className="grid grid-cols-[1.6fr_1fr_1fr_96px] items-center gap-3 border-t py-2"
+                              >
+                                <span className="truncate text-[13px] font-medium">{c.companyName}</span>
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {c.creditsafeCredits > 0 ? `${c.creditsafeCredits} cr` : "—"}
+                                </span>
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {c.cognismCredits > 0 ? `${c.cognismCredits} cr` : "—"}
+                                </span>
+                                <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">
+                                  {c.skipped ? "Skipped" : "Redeemed"}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-xs text-muted-foreground">
+                Showing {Math.min((page - 1) * PAGE_SIZE + 1, runs.length)}-{Math.min(page * PAGE_SIZE, runs.length)} of {runs.length} runs
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+                  Previous
+                </Button>
+                <span className="min-w-16 text-center text-xs text-muted-foreground">Page {page} / {totalPages}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={page >= totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

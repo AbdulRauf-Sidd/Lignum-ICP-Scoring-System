@@ -3,11 +3,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
-import { Download, Mail, Phone, Search, Sparkles, X, Loader2 } from "lucide-react";
+import { Download, Mail, Phone, Search, Sparkles, X, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TierBadge, SectorBadge } from "@/components/shared/badges";
 import type { Company } from "@/lib/types";
@@ -100,6 +101,8 @@ function PillGroup<T extends string>({
   );
 }
 
+const COMPANY_PAGE_SIZE = 10;
+
 export function ContactsWorkspace({ companies, contacts }: { companies: Company[]; contacts: ContactRow[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -109,12 +112,16 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
   const [sortBy, setSortBy] = React.useState<"score" | "tier" | "name">("score");
   const [qualityFilter, setQualityFilter] = React.useState<"all" | NonNullable<EmailQuality>>("all");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "redeemed" | "not_redeemed">("all");
+  const [companySearch, setCompanySearch] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [expandedCompanies, setExpandedCompanies] = React.useState<Set<string>>(new Set());
   const [findingCompanyId, setFindingCompanyId] = React.useState<string | null>(null);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const busy = findingCompanyId !== null || pendingKey !== null;
 
   const groups = companies
     .filter((c) => !companyFilter || c.id === companyFilter)
+    .filter((c) => !companySearch.trim() || c.name.toLowerCase().includes(companySearch.trim().toLowerCase()))
     .map((company) => ({
       company,
       contacts: contacts
@@ -129,6 +136,17 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
       return (tierRank[a.company.tier ?? "C"] ?? 3) - (tierRank[b.company.tier ?? "C"] ?? 3);
     });
 
+  const totalPages = Math.max(1, Math.ceil(groups.length / COMPANY_PAGE_SIZE));
+  React.useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [companySearch, qualityFilter, statusFilter, sortBy, companyFilter]);
+
+  const paginatedGroups = groups.slice((page - 1) * COMPANY_PAGE_SIZE, page * COMPANY_PAGE_SIZE);
+
   const selectableIds = groups.flatMap((g) => g.contacts.filter((c) => c.status === "listed" || c.status === "redeemed").map((c) => c.id));
   const selectedListed = contacts.filter((c) => selected.has(c.id) && c.status === "listed");
   const selectedRedeemed = contacts.filter((c) => selected.has(c.id) && c.status === "redeemed");
@@ -136,6 +154,15 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
 
   const allContacts = companyFilter ? contacts.filter((c) => c.company_id === companyFilter) : contacts;
   const enrichedCount = allContacts.filter((c) => c.status === "redeemed").length;
+
+  function toggleCompany(companyId: string) {
+    setExpandedCompanies((prev) => {
+      const next = new Set(prev);
+      if (next.has(companyId)) next.delete(companyId);
+      else next.add(companyId);
+      return next;
+    });
+  }
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(selectableIds));
@@ -287,18 +314,39 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
         </div>
       </div>
 
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={companySearch}
+            onChange={(event) => setCompanySearch(event.target.value)}
+            placeholder="Search company name"
+            className="pl-8"
+            aria-label="Search companies by name"
+          />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-5">
-        {groups.map(({ company, contacts: groupContacts }) => {
+        {paginatedGroups.map(({ company, contacts: groupContacts }) => {
           const ids = groupContacts.filter((c) => c.status === "listed" || c.status === "redeemed").map((c) => c.id);
           const groupAllSelected = ids.length > 0 && ids.every((id) => selected.has(id));
           const isFinding = findingCompanyId === company.id;
           const groupEnrichedCount = groupContacts.filter((c) => c.status === "redeemed").length;
           const groupKey = `group:${company.id}`;
+          const isExpanded = expandedCompanies.has(company.id);
           return (
             <Card key={company.id}>
               <CardContent>
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    className="flex flex-1 items-start gap-3 text-left"
+                    onClick={() => toggleCompany(company.id)}
+                  >
+                    <div className="mt-0.5 flex items-center justify-center">
+                      {isExpanded ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+                    </div>
                     <Avatar id={company.id} name={company.name} className="size-9 text-sm" />
                     <div>
                       <p className="text-base font-semibold">{company.name}</p>
@@ -311,7 +359,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                         <span className="text-xs text-muted-foreground">{company.subSector}</span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2">
                     {groupContacts.length > 0 && (
                       <span className="text-xs text-muted-foreground">
@@ -339,7 +387,7 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
                     )}
                   </div>
                 </div>
-                {groupContacts.length === 0 ? (
+                {!isExpanded ? null : groupContacts.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No contacts yet — click &quot;Find contacts&quot; to search Cognism for people at {company.name}.
                   </p>
@@ -450,6 +498,28 @@ export function ContactsWorkspace({ companies, contacts }: { companies: Company[
           </Card>
         )}
       </div>
+
+      {groups.length > 0 && (
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground">
+            Showing {Math.min((page - 1) * COMPANY_PAGE_SIZE + 1, groups.length)}-{Math.min(page * COMPANY_PAGE_SIZE, groups.length)} of {groups.length} companies
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+              Previous
+            </Button>
+            <span className="min-w-16 text-center text-xs text-muted-foreground">Page {page} / {totalPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
