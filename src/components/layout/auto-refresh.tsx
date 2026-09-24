@@ -9,7 +9,13 @@ const REFRESH_INTERVAL_MS = 15000;
 // asynchronously in n8n the way companies/contacts/etc. do, so refreshing
 // them on a timer is just wasted work. Matches the route itself and any
 // nested sub-routes.
-const AUTO_REFRESH_DISABLED_PATHS = ["/admin/users", "/usage", "/analytics", "/accounts"];
+const AUTO_REFRESH_DISABLED_PATHS = [
+  "/admin/users",
+  "/usage",
+  "/analytics",
+  "/accounts",
+  "/target-list",
+];
 
 function isAutoRefreshDisabled(pathname: string) {
   return AUTO_REFRESH_DISABLED_PATHS.some(
