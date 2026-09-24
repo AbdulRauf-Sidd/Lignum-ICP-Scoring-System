@@ -1,6 +1,72 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getUsers } from "@/lib/data/users";
 
+const CREDITSAFE_BALANCE_WEBHOOK_URL =
+  process.env.N8N_CREDITSAFE_BALANCE_WEBHOOK_URL ??
+  "https://lignum.app.n8n.cloud/webhook/079475e7-ffdc-4bc2-b2be-647aa9062508";
+const WEBHOOK_SECRET_HEADER = "X-Lignum-Webhook-Secret";
+
+interface CreditsafeBalanceResponse {
+  success?: boolean;
+  data?: Array<{
+    countryIso2?: string;
+    paid?: number;
+    used?: number;
+  }>;
+}
+
+export interface CreditsafeCountryBalance {
+  paid: number;
+  used: number;
+}
+
+export interface CreditsafeBalances {
+  US: CreditsafeCountryBalance;
+  CA: CreditsafeCountryBalance;
+}
+
+const EMPTY_CREDITSAFE_BALANCES: CreditsafeBalances = {
+  US: { paid: 0, used: 0 },
+  CA: { paid: 0, used: 0 },
+};
+
+export async function getCreditsafeBalances(): Promise<CreditsafeBalances> {
+  const webhookSecret = process.env.N8N_WEBHOOK_SECRET;
+  if (!webhookSecret) return EMPTY_CREDITSAFE_BALANCES;
+
+  try {
+    const response = await fetch(CREDITSAFE_BALANCE_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        [WEBHOOK_SECRET_HEADER]: webhookSecret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(20_000),
+      cache: "no-store",
+    });
+    if (!response.ok) return EMPTY_CREDITSAFE_BALANCES;
+
+    const body = (await response.json()) as CreditsafeBalanceResponse;
+    if (!body.success || !Array.isArray(body.data)) return EMPTY_CREDITSAFE_BALANCES;
+
+    const balances: CreditsafeBalances = {
+      US: { ...EMPTY_CREDITSAFE_BALANCES.US },
+      CA: { ...EMPTY_CREDITSAFE_BALANCES.CA },
+    };
+    for (const entry of body.data) {
+      if (entry.countryIso2 !== "US" && entry.countryIso2 !== "CA") continue;
+      balances[entry.countryIso2] = {
+        paid: typeof entry.paid === "number" ? entry.paid : 0,
+        used: typeof entry.used === "number" ? entry.used : 0,
+      };
+    }
+    return balances;
+  } catch {
+    return EMPTY_CREDITSAFE_BALANCES;
+  }
+}
+
 // Mirrors the real `usage_runs` table.
 export interface UsageRunRow {
   id: string;

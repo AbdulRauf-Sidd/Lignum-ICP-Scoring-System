@@ -6,6 +6,7 @@ const WEBHOOK_SECRET_HEADER = "X-Lignum-Webhook-Secret";
 interface ImportRow {
   name: string;
   domain: string;
+  selected_country: "US" | "CA" | "GB";
 }
 
 interface ImportPayload {
@@ -19,7 +20,11 @@ function isImportPayload(value: unknown): value is ImportPayload {
   if (typeof v.icp_name !== "string" || !v.icp_name.trim()) return false;
   if (!Array.isArray(v.rows) || v.rows.length === 0) return false;
   return v.rows.every(
-    (r) => r && typeof r === "object" && typeof (r as ImportRow).domain === "string",
+    (r) =>
+      r &&
+      typeof r === "object" &&
+      typeof (r as ImportRow).domain === "string" &&
+      ["US", "CA", "GB"].includes((r as ImportRow).selected_country),
   );
 }
 
@@ -43,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   if (!isImportPayload(payload)) {
     return NextResponse.json(
-      { error: "Expected { icp_name, rows: [{ name, domain }] } with an ICP chosen and at least one row." },
+      { error: "Expected { icp_name, rows: [{ name, domain, selected_country }] } with selected_country set to US, CA, or GB." },
       { status: 400 },
     );
   }

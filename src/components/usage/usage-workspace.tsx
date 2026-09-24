@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { useChartPalette } from "@/hooks/use-chart-palette";
-import type { UsageRunDetail } from "@/lib/data/usage";
+import type { CreditsafeBalances, UsageRunDetail } from "@/lib/data/usage";
 import { summarizeUsageRuns } from "@/lib/data/usage";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +55,7 @@ function groupByCompany(items: UsageRunDetail["items"]): CompanyBreakdown[] {
 
 const PAGE_SIZE = 10;
 
-export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
+export function UsageWorkspace({ runs, creditsafeBalances }: { runs: UsageRunDetail[]; creditsafeBalances: CreditsafeBalances }) {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [page, setPage] = React.useState(1);
   const palette = useChartPalette();
@@ -126,6 +126,30 @@ export function UsageWorkspace({ runs }: { runs: UsageRunDetail[] }) {
           <p className="text-xs text-muted-foreground">Counted from this app&apos;s own redeem calls — not a provider balance.</p>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        {(["US", "CA"] as const).map((country) => {
+          const label = country === "US" ? "US" : "Canada";
+          const balance = creditsafeBalances[country];
+          return (
+            <Card key={country}>
+              <CardContent className="flex flex-col gap-3">
+                <p className="font-mono text-[10.5px] tracking-wide text-muted-foreground uppercase">Creditsafe {label}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Credits paid</p>
+                    <p className="mt-1 font-mono text-2xl font-bold">{balance.paid}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Credits used</p>
+                    <p className="mt-1 font-mono text-2xl font-bold">{balance.used}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       <div className="flex flex-col gap-3.5">
         <div className="flex items-baseline gap-3">
