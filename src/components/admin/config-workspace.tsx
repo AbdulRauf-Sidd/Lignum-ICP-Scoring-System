@@ -1188,6 +1188,19 @@ export function ConfigWorkspace({
             </CardContent>
           </Card>
 
+        </div>
+      </div>
+      </div>
+      </section>
+
+      <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/[0.04] p-4 sm:p-5">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Badge className="border-transparent bg-indigo-600 text-white">Global</Badge>
+        <h2 className="text-sm font-semibold">Account Health model</h2>
+        <span className="text-xs text-muted-foreground">— powers every account in the Accounts module</span>
+      </div>
+
+      <div className="flex flex-col gap-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <Card>
               <CardHeader className="flex-row items-start justify-between">
@@ -1274,19 +1287,7 @@ export function ConfigWorkspace({
               </CardContent>
             </Card>
           </div>
-        </div>
-      </div>
-      </div>
-      </section>
 
-      <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/[0.04] p-4 sm:p-5">
-      <div className="mb-5 flex items-center gap-2.5">
-        <Badge className="border-transparent bg-indigo-600 text-white">Global</Badge>
-        <h2 className="text-sm font-semibold">Account Health model</h2>
-        <span className="text-xs text-muted-foreground">— powers every account in the Accounts module</span>
-      </div>
-
-      <div className="flex flex-col gap-6">
           <Card>
             <CardHeader className="flex-row items-start justify-between">
               <div>
