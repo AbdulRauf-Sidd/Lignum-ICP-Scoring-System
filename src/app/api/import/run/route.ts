@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         [WEBHOOK_SECRET_HEADER]: webhookSecret,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ...payload, run_by: user?.name ?? null }),
+      body: JSON.stringify({ ...payload, run_by: user?.id ?? null }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {

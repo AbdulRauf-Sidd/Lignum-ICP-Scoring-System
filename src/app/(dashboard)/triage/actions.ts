@@ -116,7 +116,7 @@ export async function confirmEntityResolution(
     company_id: companyId,
     ...(candidate.creditsafeCompanyId ? { creditsafe_company_id: candidate.creditsafeCompanyId } : {}),
     ...(candidate.cognismCompanyId ? { cognism_company_id: candidate.cognismCompanyId } : {}),
-    run_by: user?.name ?? null,
+    run_by: user?.id ?? null,
   };
 
   let upstream: Response;

@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getUsers } from "@/lib/data/users";
 
 // Mirrors the real `usage_runs` table.
 export interface UsageRunRow {
@@ -52,6 +53,15 @@ export interface UsageSummary {
   totalCredits: number;
 }
 
+// usage_runs.run_by stores the acting user's auth id (uuid); swap it for a
+// display name. Unknown ids (e.g. a deleted user) fall back to "—".
+async function withRunByNames<T extends { run_by: string | null }>(rows: T[]): Promise<T[]> {
+  if (!rows.some((r) => r.run_by)) return rows;
+  const users = await getUsers();
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return rows.map((r) => ({ ...r, run_by: r.run_by ? (nameById.get(r.run_by) ?? null) : null }));
+}
+
 export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
   const supabase = getSupabaseServerClient();
   const { data: runs, error } = await supabase
@@ -62,7 +72,7 @@ export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
 
   if (error) throw new Error(`Failed to load usage_runs: ${error.message}`);
 
-  const runRows = (runs ?? []) as UsageRunRow[];
+  const runRows = await withRunByNames((runs ?? []) as UsageRunRow[]);
   if (runRows.length === 0) return [];
 
   const runIds = runRows.map((r) => r.id);
@@ -136,7 +146,7 @@ export async function getRecentUsageRuns(limit = 8): Promise<UsageRun[]> {
 
   if (error) throw new Error(`Failed to load usage_runs: ${error.message}`);
 
-  const rows = (runs ?? []) as UsageRunRow[];
+  const rows = await withRunByNames((runs ?? []) as UsageRunRow[]);
   if (rows.length === 0) return [];
 
   const { data: items, error: itemsError } = await supabase
