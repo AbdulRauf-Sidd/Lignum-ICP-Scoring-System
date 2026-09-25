@@ -7,15 +7,22 @@ import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
 // their currency/fee-type lookups. Separate dataset from `companies` — no
 // foreign key between them, keyed by Loxo's numeric `company_id`.
 
-// Everything job-scoped (the jobs table itself, and every metric derived
-// from candidates/events/placements against a job) is restricted to these
-// two categories — the other real values (Tier 3, Tier 3 Spec, Retainer,
-// Tom Wood, Dropout, null) are out of scope for this page.
-export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2",  "T2T1"] as const;
-
 const PLACEMENT_PAGE_SIZE = 1_000;
 const FEE_TYPE_PERCENTAGE = 1;
 const FEE_TYPE_FLAT = 2;
+
+// Everything job-scoped (the jobs table itself, placements/revenue, and
+// totalJobs) excludes these job types — MSP and Retainer aren't Loxo's
+// per-hire recruiting work, and Dropout never went anywhere. Filtered out
+// rather than allow-listed, so a new legitimate job_type isn't silently
+// hidden the way ALLOWED_JOB_CATEGORIES used to.
+export const EXCLUDED_JOB_TYPES = ["MSP", "Retainer", "Dropout"] as const;
+
+// Revenue per CV and revenue per first interview divide by revenue drawn
+// only from these job categories — standard per-hire recruiting jobs, not
+// the wider set Total Revenue counts. (job_type exclusion above still
+// applies on top of this.)
+export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2", "T2T1"] as const;
 
 export interface AccountListItem {
   companyId: number;
@@ -63,11 +70,6 @@ interface AccountListRow {
   total_revenue: number | null;
   updated_at: string;
   revenue_currency: { code: string; symbol: string } | null;
-}
-
-interface AccountListJobRow {
-  company_id: number;
-  job_id: number;
 }
 
 interface AccountListPlacementRow {
@@ -158,22 +160,6 @@ function countEventsByCompany(rows: AccountListEventRow[], activityKeys: string[
 export async function getAccountsList(search?: string, range?: DateRange): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
   const { startIso, endIso } = rangeIso(range);
-  const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
-    const allRows: AccountListJobRow[] = [];
-    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
-      const { data, error } = await supabase
-        .from("active_accounts_jobs")
-        .select("company_id, job_id")
-        .in("job_category", ALLOWED_JOB_CATEGORIES)
-        .order("job_id", { ascending: true })
-        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
-      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
-
-      const page = (data ?? []) as AccountListJobRow[];
-      allRows.push(...page);
-      if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
-    }
-  };
   const fetchPlacementRows = async (): Promise<AccountListPlacementRow[]> => {
     const allRows: AccountListPlacementRow[] = [];
     for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
@@ -192,6 +178,29 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
     }
   };
+  // Total Revenue itself is never job-filtered — every placement counts,
+  // any category, any job type. Only revenue-per-CV / revenue-per-interview
+  // divide by this narrower, Tier 1/2 + non-MSP/Retainer/Dropout subset.
+  const fetchTierJobIds = async (): Promise<Set<number>> => {
+    const tierJobIds = new Set<number>();
+    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("active_accounts_jobs")
+        .select("job_id, job_category, job_type")
+        .order("job_id", { ascending: true })
+        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
+
+      const page = (data ?? []) as { job_id: number; job_category: string | null; job_type: string | null }[];
+      for (const r of page) {
+        const excluded = EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]);
+        if (!excluded && ALLOWED_JOB_CATEGORIES.includes(r.job_category as (typeof ALLOWED_JOB_CATEGORIES)[number])) {
+          tierJobIds.add(r.job_id);
+        }
+      }
+      if (page.length < PLACEMENT_PAGE_SIZE) return tierJobIds;
+    }
+  };
 
   let accountsQuery = supabase
     .from("active_accounts")
@@ -201,25 +210,27 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, tierJobRows, placementRows, { rates }, eventRows] = await Promise.all([
+  const [{ data, error }, placementRows, { rates }, eventRows, tierJobIds] = await Promise.all([
     accountsQuery,
-    fetchTierJobRows(),
     fetchPlacementRows(),
     getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
+    fetchTierJobIds(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
-  const tierJobKeys = new Set(tierJobRows.map((row) => `${row.company_id}:${row.job_id}`));
   // Keep each company's revenue separate by source currency before converting,
   // exactly as getAccountMetrics does for the company detail view. In
   // particular, an unconvertible currency invalidates that company's GBP
   // total; silently omitting it would make the list's revenue-per-CV and
   // revenue-per-interview values disagree with the detail view.
+  //
+  // Two totals are accumulated per company: `all` (every placement — what
+  // Total Revenue shows) and `tier` (Tier 1/2 + non-excluded job types only
+  // — what revenue-per-CV / revenue-per-interview divide by).
   const revenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
+  const tierRevenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
   for (const placement of placementRows) {
-    if (!tierJobKeys.has(`${placement.company_id}:${placement.job_id}`)) continue;
-
     const revenue = calculatePlacementRevenue(placement);
     if (revenue === null) continue;
 
@@ -227,27 +238,40 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     const companyRevenue = revenueByCompanyCurrency.get(placement.company_id) ?? new Map<string | null, number>();
     companyRevenue.set(code, (companyRevenue.get(code) ?? 0) + revenue);
     revenueByCompanyCurrency.set(placement.company_id, companyRevenue);
+
+    if (tierJobIds.has(placement.job_id)) {
+      const tierCompanyRevenue = tierRevenueByCompanyCurrency.get(placement.company_id) ?? new Map<string | null, number>();
+      tierCompanyRevenue.set(code, (tierCompanyRevenue.get(code) ?? 0) + revenue);
+      tierRevenueByCompanyCurrency.set(placement.company_id, tierCompanyRevenue);
+    }
   }
 
-  const revenueByCompany = new Map<number, number | null>();
-  for (const [companyId, revenueByCurrency] of revenueByCompanyCurrency) {
-    let revenueGbp: number | null = 0;
-    for (const [code, amount] of revenueByCurrency) {
-      const converted = convertToGbp(amount, code, rates);
-      if (converted === null) {
-        revenueGbp = null;
-        break;
+  const toGbpByCompany = (byCompanyCurrency: Map<number, Map<string | null, number>>): Map<number, number | null> => {
+    const result = new Map<number, number | null>();
+    for (const [companyId, revenueByCurrency] of byCompanyCurrency) {
+      let revenueGbp: number | null = 0;
+      for (const [code, amount] of revenueByCurrency) {
+        const converted = convertToGbp(amount, code, rates);
+        if (converted === null) {
+          revenueGbp = null;
+          break;
+        }
+        revenueGbp += converted;
       }
-      revenueGbp += converted;
+      result.set(companyId, revenueGbp);
     }
-    revenueByCompany.set(companyId, revenueGbp);
-  }
+    return result;
+  };
+
+  const revenueByCompany = toGbpByCompany(revenueByCompanyCurrency);
+  const tierRevenueByCompany = toGbpByCompany(tierRevenueByCompanyCurrency);
 
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
   const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
 
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => {
     const totalRevenue = revenueByCompany.has(r.company_id) ? (revenueByCompany.get(r.company_id) ?? null) : 0;
+    const tierRevenue = tierRevenueByCompany.has(r.company_id) ? (tierRevenueByCompany.get(r.company_id) ?? null) : 0;
     const cvCount = cvCountByCompany.get(r.company_id) ?? 0;
     const interviewCount = interviewCountByCompany.get(r.company_id) ?? 0;
     return {
@@ -255,8 +279,8 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       companyName: r.company_name,
       status: r.status,
       // Revenue per CV / per first interview — null when there are none.
-      cvCost: totalRevenue !== null && cvCount > 0 ? totalRevenue / cvCount : null,
-      interviewCost: totalRevenue !== null && interviewCount > 0 ? totalRevenue / interviewCount : null,
+      cvCost: tierRevenue !== null && cvCount > 0 ? tierRevenue / cvCount : null,
+      interviewCost: tierRevenue !== null && interviewCount > 0 ? tierRevenue / interviewCount : null,
       ownedBy: r.owned_by,
       totalRevenue,
       revenueCurrencyCode: "GBP",
@@ -606,24 +630,25 @@ export async function getAccountJobs(companyId: number): Promise<AccountJob[]> {
       "job_id, job_title, created_at, published_at, salary, salary_currency_id, job_type, job_category, fee, fee_type_id, fee_currency_id, salary_currency:currencies!salary_currency_id(code, symbol), fee_currency:currencies!fee_currency_id(code, symbol), fee_type:fee_type(fee_type_key)",
     )
     .eq("company_id", companyId)
-    .in("job_category", ALLOWED_JOB_CATEGORIES)
     .order("published_at", { ascending: false });
 
   if (error) throw new Error(`Failed to load active_accounts_jobs: ${error.message}`);
 
-  return ((data ?? []) as unknown as AccountJobRow[]).map((r) => ({
-    jobId: r.job_id,
-    jobTitle: r.job_title,
-    createdAt: r.created_at,
-    publishedAt: r.published_at,
-    salary: r.salary,
-    salaryCurrencyCode: r.salary_currency?.code ?? null,
-    jobType: r.job_type,
-    jobCategory: r.job_category,
-    fee: r.fee,
-    feeTypeKey: r.fee_type?.fee_type_key ?? null,
-    feeCurrencyCode: r.fee_currency?.code ?? null,
-  }));
+  return ((data ?? []) as unknown as AccountJobRow[])
+    .filter((r) => !EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]))
+    .map((r) => ({
+      jobId: r.job_id,
+      jobTitle: r.job_title,
+      createdAt: r.created_at,
+      publishedAt: r.published_at,
+      salary: r.salary,
+      salaryCurrencyCode: r.salary_currency?.code ?? null,
+      jobType: r.job_type,
+      jobCategory: r.job_category,
+      fee: r.fee,
+      feeTypeKey: r.fee_type?.fee_type_key ?? null,
+      feeCurrencyCode: r.fee_currency?.code ?? null,
+    }));
 }
 
 // Accounts whose company_url matches any of the given domains, keyed by the
