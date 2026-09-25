@@ -100,7 +100,9 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   function toggleModule(current: AppModule[], module: AppModule): AppModule[] {
-    if (current.includes(module)) return current.filter((item) => item !== module);
+    if (current.includes(module)) {
+      return current.length > 1 ? current.filter((item) => item !== module) : current;
+    }
     return [...current, module];
   }
 
@@ -145,13 +147,17 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {APP_MODULES.map((module) => (
                   <label key={module} className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={modules.includes(module)} onCheckedChange={() => setModules((current) => toggleModule(current, module))} />
+                    <Checkbox
+                      checked={modules.includes(module)}
+                      disabled={modules.length === 1 && modules.includes(module)}
+                      onCheckedChange={() => setModules((current) => toggleModule(current, module))}
+                    />
                     {MODULE_LABELS[module]}
                   </label>
                 ))}
               </div>
             </div>
-            <Button type="submit" disabled={creating} className="w-fit sm:col-span-2 lg:col-span-4">
+            <Button type="submit" disabled={creating || modules.length === 0} className="w-fit sm:col-span-2 lg:col-span-4">
               {creating && <Loader2 className="size-4 animate-spin" />}
               Add user
             </Button>
@@ -166,12 +172,8 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
             {users.length} account{users.length === 1 ? "" : "s"} · Prospects are enabled by default for new users.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col divide-y">
-          {usersLoading ? (
-            <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 size-4 animate-spin" /> Updating users...
-            </div>
-          ) : users.map((u) => (
+        <CardContent className="relative flex flex-col divide-y">
+          {users.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-bold text-muted-foreground">
                 {initials(u.name)}
@@ -215,6 +217,11 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
               </div>
             </div>
           ))}
+          {usersLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 text-sm text-muted-foreground backdrop-blur-[1px]">
+              <Loader2 className="mr-2 size-4 animate-spin" /> Updating users...
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

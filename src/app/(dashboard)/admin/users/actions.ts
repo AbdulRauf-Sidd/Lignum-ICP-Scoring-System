@@ -35,6 +35,7 @@ export async function createUser(input: CreateUserInput) {
 export async function updateUserModules(userId: string, modules: AppModule[]) {
   const me = await requireModule("admin");
   const selected = normalizeModules(modules);
+  if (selected.length === 0) throw new Error("At least one module must be selected.");
   if (userId === me.id && !selected.includes("admin")) throw new Error("You can't remove your own admin module.");
   const supabase = getSupabaseServerClient();
   const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
