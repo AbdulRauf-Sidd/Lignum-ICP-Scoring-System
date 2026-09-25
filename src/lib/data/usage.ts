@@ -41,12 +41,11 @@ export async function getCreditsafeBalances(): Promise<CreditsafeBalances> {
 
   try {
     const response = await fetch(CREDITSAFE_BALANCE_WEBHOOK_URL, {
-      method: "POST",
+      method: "GET",
       headers: {
         [WEBHOOK_SECRET_HEADER]: webhookSecret,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({}),
       signal: AbortSignal.timeout(20_000),
       cache: "no-store",
     });
