@@ -7,15 +7,16 @@ import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
 // their currency/fee-type lookups. Separate dataset from `companies` — no
 // foreign key between them, keyed by Loxo's numeric `company_id`.
 
-// Everything job-scoped (the jobs table itself, and every metric derived
-// from candidates/events/placements against a job) is restricted to these
-// two categories — the other real values (Tier 3, Tier 3 Spec, Retainer,
-// Tom Wood, Dropout, null) are out of scope for this page.
-export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2",  "T2T1"] as const;
-
 const PLACEMENT_PAGE_SIZE = 1_000;
 const FEE_TYPE_PERCENTAGE = 1;
 const FEE_TYPE_FLAT = 2;
+
+// Everything job-scoped (the jobs table itself, placements/revenue, and
+// totalJobs) excludes these job types — MSP and Retainer aren't Loxo's
+// per-hire recruiting work, and Dropout never went anywhere. Filtered out
+// rather than allow-listed, so a new legitimate job_type isn't silently
+// hidden the way ALLOWED_JOB_CATEGORIES used to.
+export const EXCLUDED_JOB_TYPES = ["MSP", "Retainer", "Dropout"] as const;
 
 export interface AccountListItem {
   companyId: number;
@@ -63,11 +64,6 @@ interface AccountListRow {
   total_revenue: number | null;
   updated_at: string;
   revenue_currency: { code: string; symbol: string } | null;
-}
-
-interface AccountListJobRow {
-  company_id: number;
-  job_id: number;
 }
 
 interface AccountListPlacementRow {
@@ -158,22 +154,6 @@ function countEventsByCompany(rows: AccountListEventRow[], activityKeys: string[
 export async function getAccountsList(search?: string, range?: DateRange): Promise<AccountListItem[]> {
   const supabase = getSupabaseServerClient();
   const { startIso, endIso } = rangeIso(range);
-  const fetchTierJobRows = async (): Promise<AccountListJobRow[]> => {
-    const allRows: AccountListJobRow[] = [];
-    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
-      const { data, error } = await supabase
-        .from("active_accounts_jobs")
-        .select("company_id, job_id")
-        .in("job_category", ALLOWED_JOB_CATEGORIES)
-        .order("job_id", { ascending: true })
-        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
-      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
-
-      const page = (data ?? []) as AccountListJobRow[];
-      allRows.push(...page);
-      if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
-    }
-  };
   const fetchPlacementRows = async (): Promise<AccountListPlacementRow[]> => {
     const allRows: AccountListPlacementRow[] = [];
     for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
@@ -192,6 +172,22 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
     }
   };
+  const fetchExcludedJobIds = async (): Promise<Set<number>> => {
+    const ids = new Set<number>();
+    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("active_accounts_jobs")
+        .select("job_id")
+        .in("job_type", EXCLUDED_JOB_TYPES)
+        .order("job_id", { ascending: true })
+        .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
+
+      const page = (data ?? []) as { job_id: number }[];
+      for (const r of page) ids.add(r.job_id);
+      if (page.length < PLACEMENT_PAGE_SIZE) return ids;
+    }
+  };
 
   let accountsQuery = supabase
     .from("active_accounts")
@@ -201,16 +197,15 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, tierJobRows, placementRows, { rates }, eventRows] = await Promise.all([
+  const [{ data, error }, placementRows, { rates }, eventRows, excludedJobIds] = await Promise.all([
     accountsQuery,
-    fetchTierJobRows(),
     fetchPlacementRows(),
     getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
+    fetchExcludedJobIds(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
-  const tierJobKeys = new Set(tierJobRows.map((row) => `${row.company_id}:${row.job_id}`));
   // Keep each company's revenue separate by source currency before converting,
   // exactly as getAccountMetrics does for the company detail view. In
   // particular, an unconvertible currency invalidates that company's GBP
@@ -218,7 +213,7 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
   // revenue-per-interview values disagree with the detail view.
   const revenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
   for (const placement of placementRows) {
-    if (!tierJobKeys.has(`${placement.company_id}:${placement.job_id}`)) continue;
+    if (excludedJobIds.has(placement.job_id)) continue;
 
     const revenue = calculatePlacementRevenue(placement);
     if (revenue === null) continue;
@@ -606,24 +601,25 @@ export async function getAccountJobs(companyId: number): Promise<AccountJob[]> {
       "job_id, job_title, created_at, published_at, salary, salary_currency_id, job_type, job_category, fee, fee_type_id, fee_currency_id, salary_currency:currencies!salary_currency_id(code, symbol), fee_currency:currencies!fee_currency_id(code, symbol), fee_type:fee_type(fee_type_key)",
     )
     .eq("company_id", companyId)
-    .in("job_category", ALLOWED_JOB_CATEGORIES)
     .order("published_at", { ascending: false });
 
   if (error) throw new Error(`Failed to load active_accounts_jobs: ${error.message}`);
 
-  return ((data ?? []) as unknown as AccountJobRow[]).map((r) => ({
-    jobId: r.job_id,
-    jobTitle: r.job_title,
-    createdAt: r.created_at,
-    publishedAt: r.published_at,
-    salary: r.salary,
-    salaryCurrencyCode: r.salary_currency?.code ?? null,
-    jobType: r.job_type,
-    jobCategory: r.job_category,
-    fee: r.fee,
-    feeTypeKey: r.fee_type?.fee_type_key ?? null,
-    feeCurrencyCode: r.fee_currency?.code ?? null,
-  }));
+  return ((data ?? []) as unknown as AccountJobRow[])
+    .filter((r) => !EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]))
+    .map((r) => ({
+      jobId: r.job_id,
+      jobTitle: r.job_title,
+      createdAt: r.created_at,
+      publishedAt: r.published_at,
+      salary: r.salary,
+      salaryCurrencyCode: r.salary_currency?.code ?? null,
+      jobType: r.job_type,
+      jobCategory: r.job_category,
+      fee: r.fee,
+      feeTypeKey: r.fee_type?.fee_type_key ?? null,
+      feeCurrencyCode: r.fee_currency?.code ?? null,
+    }));
 }
 
 // Accounts whose company_url matches any of the given domains, keyed by the

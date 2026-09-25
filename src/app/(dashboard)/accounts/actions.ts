@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import {
-  ALLOWED_JOB_CATEGORIES,
+  EXCLUDED_JOB_TYPES,
   QUALITATIVE_METRICS,
   type QualitativeMetric,
 } from "@/lib/data/accounts";
@@ -41,7 +41,7 @@ export interface AccountMetrics {
   // null when there's no GBP revenue figure or the count is 0.
   cvCost: number | null;
   interviewCost: number | null;
-  // Jobs added in the date range (Tier 1 / Tier 2 categories only).
+  // Jobs added in the date range, any job category.
   totalJobs: number;
   // recruiterCost = totalCvs * model_settings.cv_cost, accountManagementCost =
   // totalJobs * model_settings.interview_cost, businessCost = their sum. Null
@@ -101,19 +101,22 @@ function placementRevenue(row: PlacementRow): number | null {
 export async function getAccountMetrics(companyId: number, startDate: string | null, endDate: string | null): Promise<AccountMetrics> {
   const supabase = getSupabaseServerClient();
 
-  // Placements remain scoped to Tier 1 / Tier 2 jobs. CV and interview event
-  // totals intentionally use every event belonging to the selected company.
   const { data: jobRows, error: jobsError } = await supabase
     .from("active_accounts_jobs")
-    .select("job_id, created_at")
-    .eq("company_id", companyId)
-    .in("job_category", ALLOWED_JOB_CATEGORIES);
+    .select("job_id, created_at, job_type")
+    .eq("company_id", companyId);
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
-  const jobIds = (jobRows ?? []).map((r) => r.job_id as number);
+  // MSP, Retainer and Dropout jobs are excluded everywhere job-scoped below
+  // (totalJobs and the placements this company's revenue is drawn from).
+  const includedJobRows = (jobRows ?? []).filter(
+    (r) => !EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]),
+  );
+  const includedJobIds = includedJobRows.map((r) => r.job_id as number);
+
   const startMs = startDate ? new Date(startDate).getTime() : -Infinity;
   const endMs = endDate ? new Date(endDate).getTime() : Infinity;
-  const totalJobs = (jobRows ?? []).filter((r) => {
+  const totalJobs = includedJobRows.filter((r) => {
     const t = new Date(r.created_at as string).getTime();
     return t >= startMs && t <= endMs;
   }).length;
@@ -143,12 +146,12 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
   const interviewEventsPromise = fetchEventPages(FIRST_INTERVIEW_ACTIVITY_KEYS, "first interview");
 
   const fetchPlacements = () => {
-    if (jobIds.length === 0) return Promise.resolve({ data: [], error: null });
+    if (includedJobIds.length === 0) return Promise.resolve({ data: [], error: null });
     let query = supabase
       .from("active_accounts_placements")
       .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
       .eq("company_id", companyId)
-      .in("job_id", jobIds);
+      .in("job_id", includedJobIds);
     if (startDate) query = query.gte("created_at", startDate);
     if (endDate) query = query.lte("created_at", endDate);
     return query;
