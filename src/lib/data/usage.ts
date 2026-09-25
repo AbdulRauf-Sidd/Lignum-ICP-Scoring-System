@@ -32,7 +32,12 @@ const EMPTY_CREDITSAFE_BALANCES: CreditsafeBalances = {
 
 export async function getCreditsafeBalances(): Promise<CreditsafeBalances> {
   const webhookSecret = process.env.N8N_WEBHOOK_SECRET;
-  if (!webhookSecret) return EMPTY_CREDITSAFE_BALANCES;
+  if (!webhookSecret) {
+    console.warn("[usage] Missing N8N_WEBHOOK_SECRET; skipping Creditsafe balance fetch");
+    return EMPTY_CREDITSAFE_BALANCES;
+  }
+
+  console.log("[usage] Fetching Creditsafe balances from:", CREDITSAFE_BALANCE_WEBHOOK_URL);
 
   try {
     const response = await fetch(CREDITSAFE_BALANCE_WEBHOOK_URL, {
@@ -45,10 +50,22 @@ export async function getCreditsafeBalances(): Promise<CreditsafeBalances> {
       signal: AbortSignal.timeout(20_000),
       cache: "no-store",
     });
-    if (!response.ok) return EMPTY_CREDITSAFE_BALANCES;
+
+    console.log("[usage] Creditsafe webhook status:", response.status, response.statusText);
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error("[usage] Creditsafe webhook non-OK response:", text);
+      return EMPTY_CREDITSAFE_BALANCES;
+    }
 
     const body = (await response.json()) as CreditsafeBalanceResponse;
-    if (!body.success || !Array.isArray(body.data)) return EMPTY_CREDITSAFE_BALANCES;
+    console.log("[usage] Creditsafe webhook JSON:", body);
+
+    if (!body.success || !Array.isArray(body.data)) {
+      console.warn("[usage] Creditsafe webhook returned unexpected payload");
+      return EMPTY_CREDITSAFE_BALANCES;
+    }
 
     const balances: CreditsafeBalances = {
       US: { ...EMPTY_CREDITSAFE_BALANCES.US },
@@ -62,7 +79,8 @@ export async function getCreditsafeBalances(): Promise<CreditsafeBalances> {
       };
     }
     return balances;
-  } catch {
+  } catch (error) {
+    console.error("[usage] Creditsafe balance fetch failed:", error);
     return EMPTY_CREDITSAFE_BALANCES;
   }
 }
