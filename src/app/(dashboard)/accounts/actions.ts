@@ -257,9 +257,26 @@ interface CandidateEventRow {
   created_at: string;
 }
 
+interface CandidatePlacementRow {
+  placement_id: number;
+  person_id: number;
+  created_at: string;
+}
+
+// "Placed" is sourced from active_accounts_placements (job_id + person_id
+// as the super key), not the "hired" events below — a placement is the
+// hard business record, unlike the event log which can be noisy or
+// duplicated. eventId is negated so it never collides with a real event_id
+// (always positive) in the same candidate's merged list.
+const PLACED_ACTIVITY_KEY = "hired";
+
 export async function getJobCandidates(jobId: number, companyId: number): Promise<JobCandidate[]> {
   const supabase = getSupabaseServerClient();
-  const [{ data: candidateRows, error: candidatesError }, { data: eventRows, error: eventsError }] = await Promise.all([
+  const [
+    { data: candidateRows, error: candidatesError },
+    { data: eventRows, error: eventsError },
+    { data: placementRows, error: placementsError },
+  ] = await Promise.all([
     supabase
       .from("active_accounts_jobs_candidates")
       .select("candidate_id, person_id, created_at")
@@ -270,11 +287,18 @@ export async function getJobCandidates(jobId: number, companyId: number): Promis
       .select("event_id, person_id, activity_key, created_at")
       .eq("job_id", jobId)
       .eq("company_id", companyId)
+      .neq("activity_key", PLACED_ACTIVITY_KEY)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("active_accounts_placements")
+      .select("placement_id, person_id, created_at")
+      .eq("job_id", jobId)
+      .eq("company_id", companyId),
   ]);
 
   if (candidatesError) throw new Error(`Failed to load candidates: ${candidatesError.message}`);
   if (eventsError) throw new Error(`Failed to load candidate events: ${eventsError.message}`);
+  if (placementsError) throw new Error(`Failed to load placements: ${placementsError.message}`);
 
   // The source system frequently double-logs the same event a few hours
   // apart (same job/person/activity_key, same calendar date, two event_ids)
@@ -297,6 +321,15 @@ export async function getJobCandidates(jobId: number, companyId: number): Promis
     eventsByPerson.set(e.person_id, list);
   }
 
+  for (const p of (placementRows ?? []) as CandidatePlacementRow[]) {
+    const list = eventsByPerson.get(p.person_id) ?? [];
+    list.push({ eventId: -p.placement_id, activityKey: PLACED_ACTIVITY_KEY, createdAt: p.created_at });
+    eventsByPerson.set(p.person_id, list);
+  }
+  for (const list of eventsByPerson.values()) {
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
   // Most candidates added to a job (roughly two-thirds, in the real data)
   // never got a single event logged — added but nothing tracked since. Those
   // are dropped rather than shown as an empty "No activity logged" row; a
@@ -304,14 +337,30 @@ export async function getJobCandidates(jobId: number, companyId: number): Promis
   // whatever the activity — not just the CV/interview keys the metrics
   // above count, since e.g. a real "hired" candidate can lack a logged
   // "submitted" event and would otherwise be wrongly hidden.
-  return ((candidateRows ?? []) as CandidateRow[])
-    .filter((c) => eventsByPerson.has(c.person_id))
-    .map((c) => ({
-      candidateId: c.candidate_id,
-      personId: c.person_id,
-      addedAt: c.created_at,
-      events: eventsByPerson.get(c.person_id) ?? [],
-    }));
+  //
+  // The list is driven by eventsByPerson (events + placements), not
+  // candidateRows — confirmed in real data that a meaningful share of
+  // (job, person) pairs with a real event or placement have no matching
+  // active_accounts_jobs_candidates row at all (745 of 6,597 event pairs;
+  // 185 of 645 placements). Filtering on candidateRows membership, as this
+  // used to, silently dropped those people — including genuinely placed
+  // candidates — from this list entirely. For the ones missing a candidate
+  // row, candidateId is synthesized (negative person_id, so it can't collide
+  // with a real one) and addedAt falls back to their earliest known event date.
+  const candidateRowByPerson = new Map<number, CandidateRow>();
+  for (const c of (candidateRows ?? []) as CandidateRow[]) {
+    candidateRowByPerson.set(c.person_id, c);
+  }
+
+  return Array.from(eventsByPerson.entries()).map(([personId, events]) => {
+    const candidateRow = candidateRowByPerson.get(personId);
+    return {
+      candidateId: candidateRow?.candidate_id ?? -personId,
+      personId,
+      addedAt: candidateRow?.created_at ?? events[0].createdAt,
+      events,
+    };
+  });
 }
 
 // Scorecard ratings and talent insights are plain columns on active_accounts
