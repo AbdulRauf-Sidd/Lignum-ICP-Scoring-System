@@ -18,6 +18,12 @@ const FEE_TYPE_FLAT = 2;
 // hidden the way ALLOWED_JOB_CATEGORIES used to.
 export const EXCLUDED_JOB_TYPES = ["MSP", "Retainer", "Dropout"] as const;
 
+// Revenue per CV and revenue per first interview divide by revenue drawn
+// only from these job categories — standard per-hire recruiting jobs, not
+// the wider set Total Revenue counts. (job_type exclusion above still
+// applies on top of this.)
+export const ALLOWED_JOB_CATEGORIES = ["Tier 1", "Tier 2", "T1", "T1-Exec", "T1-House", "T1-existing", "T1-new", "T2", "T2T1"] as const;
+
 export interface AccountListItem {
   companyId: number;
   companyName: string;
@@ -172,20 +178,27 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
     }
   };
-  const fetchExcludedJobIds = async (): Promise<Set<number>> => {
-    const ids = new Set<number>();
+  // Total Revenue itself is never job-filtered — every placement counts,
+  // any category, any job type. Only revenue-per-CV / revenue-per-interview
+  // divide by this narrower, Tier 1/2 + non-MSP/Retainer/Dropout subset.
+  const fetchTierJobIds = async (): Promise<Set<number>> => {
+    const tierJobIds = new Set<number>();
     for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
       const { data, error } = await supabase
         .from("active_accounts_jobs")
-        .select("job_id")
-        .in("job_type", EXCLUDED_JOB_TYPES)
+        .select("job_id, job_category, job_type")
         .order("job_id", { ascending: true })
         .range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
       if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
 
-      const page = (data ?? []) as { job_id: number }[];
-      for (const r of page) ids.add(r.job_id);
-      if (page.length < PLACEMENT_PAGE_SIZE) return ids;
+      const page = (data ?? []) as { job_id: number; job_category: string | null; job_type: string | null }[];
+      for (const r of page) {
+        const excluded = EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]);
+        if (!excluded && ALLOWED_JOB_CATEGORIES.includes(r.job_category as (typeof ALLOWED_JOB_CATEGORIES)[number])) {
+          tierJobIds.add(r.job_id);
+        }
+      }
+      if (page.length < PLACEMENT_PAGE_SIZE) return tierJobIds;
     }
   };
 
@@ -197,12 +210,12 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, placementRows, { rates }, eventRows, excludedJobIds] = await Promise.all([
+  const [{ data, error }, placementRows, { rates }, eventRows, tierJobIds] = await Promise.all([
     accountsQuery,
     fetchPlacementRows(),
     getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
-    fetchExcludedJobIds(),
+    fetchTierJobIds(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
@@ -211,10 +224,13 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
   // particular, an unconvertible currency invalidates that company's GBP
   // total; silently omitting it would make the list's revenue-per-CV and
   // revenue-per-interview values disagree with the detail view.
+  //
+  // Two totals are accumulated per company: `all` (every placement — what
+  // Total Revenue shows) and `tier` (Tier 1/2 + non-excluded job types only
+  // — what revenue-per-CV / revenue-per-interview divide by).
   const revenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
+  const tierRevenueByCompanyCurrency = new Map<number, Map<string | null, number>>();
   for (const placement of placementRows) {
-    if (excludedJobIds.has(placement.job_id)) continue;
-
     const revenue = calculatePlacementRevenue(placement);
     if (revenue === null) continue;
 
@@ -222,27 +238,40 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     const companyRevenue = revenueByCompanyCurrency.get(placement.company_id) ?? new Map<string | null, number>();
     companyRevenue.set(code, (companyRevenue.get(code) ?? 0) + revenue);
     revenueByCompanyCurrency.set(placement.company_id, companyRevenue);
+
+    if (tierJobIds.has(placement.job_id)) {
+      const tierCompanyRevenue = tierRevenueByCompanyCurrency.get(placement.company_id) ?? new Map<string | null, number>();
+      tierCompanyRevenue.set(code, (tierCompanyRevenue.get(code) ?? 0) + revenue);
+      tierRevenueByCompanyCurrency.set(placement.company_id, tierCompanyRevenue);
+    }
   }
 
-  const revenueByCompany = new Map<number, number | null>();
-  for (const [companyId, revenueByCurrency] of revenueByCompanyCurrency) {
-    let revenueGbp: number | null = 0;
-    for (const [code, amount] of revenueByCurrency) {
-      const converted = convertToGbp(amount, code, rates);
-      if (converted === null) {
-        revenueGbp = null;
-        break;
+  const toGbpByCompany = (byCompanyCurrency: Map<number, Map<string | null, number>>): Map<number, number | null> => {
+    const result = new Map<number, number | null>();
+    for (const [companyId, revenueByCurrency] of byCompanyCurrency) {
+      let revenueGbp: number | null = 0;
+      for (const [code, amount] of revenueByCurrency) {
+        const converted = convertToGbp(amount, code, rates);
+        if (converted === null) {
+          revenueGbp = null;
+          break;
+        }
+        revenueGbp += converted;
       }
-      revenueGbp += converted;
+      result.set(companyId, revenueGbp);
     }
-    revenueByCompany.set(companyId, revenueGbp);
-  }
+    return result;
+  };
+
+  const revenueByCompany = toGbpByCompany(revenueByCompanyCurrency);
+  const tierRevenueByCompany = toGbpByCompany(tierRevenueByCompanyCurrency);
 
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
   const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
 
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => {
     const totalRevenue = revenueByCompany.has(r.company_id) ? (revenueByCompany.get(r.company_id) ?? null) : 0;
+    const tierRevenue = tierRevenueByCompany.has(r.company_id) ? (tierRevenueByCompany.get(r.company_id) ?? null) : 0;
     const cvCount = cvCountByCompany.get(r.company_id) ?? 0;
     const interviewCount = interviewCountByCompany.get(r.company_id) ?? 0;
     return {
@@ -250,8 +279,8 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       companyName: r.company_name,
       status: r.status,
       // Revenue per CV / per first interview — null when there are none.
-      cvCost: totalRevenue !== null && cvCount > 0 ? totalRevenue / cvCount : null,
-      interviewCost: totalRevenue !== null && interviewCount > 0 ? totalRevenue / interviewCount : null,
+      cvCost: tierRevenue !== null && cvCount > 0 ? tierRevenue / cvCount : null,
+      interviewCost: tierRevenue !== null && interviewCount > 0 ? tierRevenue / interviewCount : null,
       ownedBy: r.owned_by,
       totalRevenue,
       revenueCurrencyCode: "GBP",

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import {
+  ALLOWED_JOB_CATEGORIES,
   EXCLUDED_JOB_TYPES,
   QUALITATIVE_METRICS,
   type QualitativeMetric,
@@ -37,8 +38,10 @@ export interface AccountMetrics {
   // rather than a live/cached fetch — lets the caller avoid claiming "today's
   // rates" when they aren't. Meaningless when revenueGbp is null.
   revenueRatesLive: boolean;
-  // Revenue per CV / per first interview (revenueGbp divided by each count) —
-  // null when there's no GBP revenue figure or the count is 0.
+  // Revenue per CV / per first interview — divides by revenue from Tier 1 /
+  // Tier 2 jobs only (not revenueGbp above, which is wider) since these two
+  // ratios are meant to reflect standard per-hire recruiting work. Null when
+  // there's no GBP figure for that subset or the count is 0.
   cvCost: number | null;
   interviewCost: number | null;
   // Jobs added in the date range, any job category.
@@ -75,6 +78,7 @@ function countFirstInterviews(rows: EventRow[]): number {
 }
 
 interface PlacementRow {
+  job_id: number;
   fee: number;
   fee_type_id: number | null;
   salary: number;
@@ -103,16 +107,22 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
 
   const { data: jobRows, error: jobsError } = await supabase
     .from("active_accounts_jobs")
-    .select("job_id, created_at, job_type")
+    .select("job_id, created_at, job_type, job_category")
     .eq("company_id", companyId);
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
-  // MSP, Retainer and Dropout jobs are excluded everywhere job-scoped below
-  // (totalJobs and the placements this company's revenue is drawn from).
+  // MSP, Retainer and Dropout jobs are excluded from totalJobs. Total
+  // Revenue itself is never job-filtered (any category, any job type) —
+  // only revenue-per-CV and revenue-per-interview divide by the Tier 1/2,
+  // non-MSP/Retainer/Dropout subset below.
   const includedJobRows = (jobRows ?? []).filter(
     (r) => !EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]),
   );
-  const includedJobIds = includedJobRows.map((r) => r.job_id as number);
+  const tierJobIds = new Set(
+    includedJobRows
+      .filter((r) => ALLOWED_JOB_CATEGORIES.includes(r.job_category as (typeof ALLOWED_JOB_CATEGORIES)[number]))
+      .map((r) => r.job_id as number),
+  );
 
   const startMs = startDate ? new Date(startDate).getTime() : -Infinity;
   const endMs = endDate ? new Date(endDate).getTime() : Infinity;
@@ -146,12 +156,10 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
   const interviewEventsPromise = fetchEventPages(FIRST_INTERVIEW_ACTIVITY_KEYS, "first interview");
 
   const fetchPlacements = () => {
-    if (includedJobIds.length === 0) return Promise.resolve({ data: [], error: null });
     let query = supabase
       .from("active_accounts_placements")
-      .select("fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
-      .eq("company_id", companyId)
-      .in("job_id", includedJobIds);
+      .select("job_id, fee, fee_type_id, salary, salary_currency_id, currency:currencies!salary_currency_id(code)")
+      .eq("company_id", companyId);
     if (startDate) query = query.gte("created_at", startDate);
     if (endDate) query = query.lte("created_at", endDate);
     return query;
@@ -171,27 +179,35 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
   // Roughly a fifth of companies have placements in more than one currency —
   // summing those together would misrepresent the total, so revenue is kept
   // as separate per-currency totals as well as a converted-to-GBP figure.
+  // A second, Tier 1/2-only total (tierRevenueByCurrency) feeds cvCost /
+  // interviewCost below rather than the wider `revenue` figure.
   const revenueByCurrency = new Map<string | null, number>();
+  const tierRevenueByCurrency = new Map<string | null, number>();
   for (const p of placements) {
     const amount = placementRevenue(p);
     if (amount === null) continue;
     const code = p.currency?.code ?? null;
     revenueByCurrency.set(code, (revenueByCurrency.get(code) ?? 0) + amount);
+    if (tierJobIds.has(p.job_id)) {
+      tierRevenueByCurrency.set(code, (tierRevenueByCurrency.get(code) ?? 0) + amount);
+    }
   }
   const revenue = Array.from(revenueByCurrency.entries())
     .map(([code, amount]) => ({ code, amount }))
     .sort((a, b) => b.amount - a.amount);
 
   const { rates, live } = await getGbpExchangeRates();
-  let revenueGbp: number | null = 0;
-  for (const r of revenue) {
-    const converted = convertToGbp(r.amount, r.code, rates);
-    if (converted === null) {
-      revenueGbp = null;
-      break;
+  const toGbp = (byCurrency: Map<string | null, number>): number | null => {
+    let gbp: number | null = 0;
+    for (const [code, amount] of byCurrency) {
+      const converted = convertToGbp(amount, code, rates);
+      if (converted === null) return null;
+      gbp += converted;
     }
-    revenueGbp += converted;
-  }
+    return gbp;
+  };
+  const revenueGbp = toGbp(revenueByCurrency);
+  const tierRevenueGbp = toGbp(tierRevenueByCurrency);
 
   const totalCvs = countCvs(cvRows);
   const firstInterviews = countFirstInterviews(interviewRows);
@@ -206,8 +222,8 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
     revenue,
     revenueGbp,
     revenueRatesLive: live,
-    cvCost: revenueGbp !== null && totalCvs > 0 ? revenueGbp / totalCvs : null,
-    interviewCost: revenueGbp !== null && firstInterviews > 0 ? revenueGbp / firstInterviews : null,
+    cvCost: tierRevenueGbp !== null && totalCvs > 0 ? tierRevenueGbp / totalCvs : null,
+    interviewCost: tierRevenueGbp !== null && firstInterviews > 0 ? tierRevenueGbp / firstInterviews : null,
     totalJobs,
     recruiterCost,
     accountManagementCost,

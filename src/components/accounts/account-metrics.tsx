@@ -159,14 +159,14 @@ export function AccountMetrics({
         <MetricCard
           label="Revenue per CV"
           value={metrics ? formatCurrency(metrics.cvCost, "GBP", 0) : "—"}
-          hint="Total revenue ÷ total CVs, this date range"
+          hint="Tier 1/2 revenue ÷ total CVs, this date range"
           tone="indigo"
           icon={Calculator}
         />
         <MetricCard
           label="Revenue per interview"
           value={metrics ? formatCurrency(metrics.interviewCost, "GBP", 0) : "—"}
-          hint="Total revenue ÷ first interviews, this date range"
+          hint="Tier 1/2 revenue ÷ first interviews, this date range"
           tone="teal"
           icon={Calculator}
         />
