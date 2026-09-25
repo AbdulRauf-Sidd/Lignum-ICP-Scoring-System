@@ -66,6 +66,12 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   async function handleModulesChange(userId: string, nextModules: AppModule[]) {
+    if (nextModules.length === 0) {
+      toast.error("At least one module is required", {
+        description: "Select at least one module before removing access.",
+      });
+      return;
+    }
     pendingUsersSnapshot.current = currentUsersSnapshot;
     setUsersLoading(true);
     setUpdatingId(userId);
