@@ -230,10 +230,13 @@ export interface FailedCompaniesResult {
 
 export async function getFailedCompanies(limit = 5): Promise<FailedCompaniesResult> {
   const supabase = getSupabaseServerClient();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const { data, error, count } = await supabase
     .from("companies")
     .select("id, name, domain, status, triage_reason, last_error", { count: "exact" })
     .eq("status", "failed")
+    .gte("updated_at", sevenDaysAgo)
     // Rejected is a deliberate human decision, not something to surface with a
     // "Retry in queue" CTA alongside genuine system/data failures. `.neq` alone
     // would silently also drop null triage_reason rows (three-valued SQL logic),
@@ -299,10 +302,13 @@ export async function getLowConfidenceCompanies(limit = 5): Promise<LowConfidenc
 
 export async function getEnrichmentQueue(limit = 20): Promise<FailedCompany[]> {
   const supabase = getSupabaseServerClient();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const { data, error } = await supabase
     .from("companies")
     .select("id, name, domain, status, triage_reason, last_error")
     .in("status", ["queued", "enriching", "failed"])
+    .gte("updated_at", sevenDaysAgo)
     .or("triage_reason.neq.rejected,triage_reason.is.null")
     .order("updated_at", { ascending: false })
     .limit(limit);
@@ -368,13 +374,15 @@ export async function getHomeStats(): Promise<HomeStats> {
   const rows = (statusRows ?? []) as { status: CompanyStatus; triage_reason: TriageReason }[];
   const triageRows = rows.filter((r) => r.status === "triage");
 
+  const recentFailedCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   return {
     triageCount: triageRows.length,
     entityAmbiguousCount: triageRows.filter((r) => r.triage_reason === "entity_ambiguous").length,
     lowConfidenceCount: triageRows.filter((r) => r.triage_reason === "low_confidence_sector").length,
     scoredThisWeekCount: scoredThisWeekCount ?? 0,
     inProgressCount: rows.filter((r) => r.status === "queued" || r.status === "enriching").length,
-    failedCount: rows.filter((r) => r.status === "failed").length,
+    failedCount: rows.filter((r) => r.status === "failed" && new Date(r.updated_at ?? 0).getTime() >= new Date(recentFailedCutoff).getTime()).length,
   };
 }
 
