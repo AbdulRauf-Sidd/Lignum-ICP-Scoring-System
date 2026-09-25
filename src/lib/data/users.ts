@@ -1,11 +1,12 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/lib/supabase/auth-server";
+import { normalizeModules, type AppModule } from "@/lib/modules";
 
 export interface AppUser {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  modules: AppModule[];
+  active: boolean;
   createdAt: string;
   lastSignInAt: string | null;
 }
@@ -20,7 +21,8 @@ export async function getUsers(): Promise<AppUser[]> {
       id: u.id,
       email: u.email ?? "",
       name: (u.user_metadata?.full_name as string | undefined) || (u.email ?? "").split("@")[0],
-      role: (u.app_metadata?.role === "admin" ? "admin" : "user") as UserRole,
+      modules: normalizeModules(u.app_metadata?.modules, u.app_metadata?.role),
+      active: !u.banned_until || new Date(u.banned_until).getTime() <= Date.now(),
       createdAt: u.created_at,
       lastSignInAt: u.last_sign_in_at ?? null,
     }))

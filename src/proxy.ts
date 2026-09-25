@@ -1,7 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-const ADMIN_ONLY_PREFIXES = ["/accounts", "/admin"];
+import { getModuleForPath, hasModuleAccess, normalizeModules } from "@/lib/modules";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -42,8 +41,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  const role = user.app_metadata?.role === "admin" ? "admin" : "user";
-  if (role !== "admin" && ADMIN_ONLY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  const requiredModule = getModuleForPath(pathname);
+  if (requiredModule && !hasModuleAccess({ modules: normalizeModules(user.app_metadata?.modules, user.app_metadata?.role) }, requiredModule)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
@@ -53,7 +52,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip static assets and Next.js internals — everything else (all pages
-    // + API routes) goes through the session/role check above.
+    // + API routes) goes through the session/module check above.
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

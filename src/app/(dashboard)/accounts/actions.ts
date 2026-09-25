@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/supabase/auth-server";
+import { requireModule } from "@/lib/supabase/auth-server";
 import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import {
@@ -303,7 +303,7 @@ export async function setQualitativeRating(companyId: number, metric: Qualitativ
   // component that renders their trigger — this page's route is already
   // admin-only in proxy.ts, but every mutation here re-checks anyway,
   // matching admin/users/actions.ts.
-  await requireAdmin();
+  await requireModule("accounts");
 
   // `metric` becomes a literal column key below — the QualitativeMetric type
   // only constrains TypeScript callers, not a raw request hitting this
@@ -330,7 +330,7 @@ export interface TalentInsightsInput {
 }
 
 export async function updateTalentInsights(companyId: number, input: TalentInsightsInput) {
-  await requireAdmin();
+  await requireModule("accounts");
   const supabase = getSupabaseServerClient();
 
   const { error } = await supabase

@@ -13,14 +13,14 @@ import {
 import { DATE_PRESET_LABELS, datePresetRange, type DatePreset } from "@/lib/date-presets";
 import { getCompanyById } from "@/lib/data/companies";
 import { getContactsForCompanies } from "@/lib/data/contacts";
-import { requireAdmin } from "@/lib/supabase/auth-server";
+import { requireModule } from "@/lib/supabase/auth-server";
 
 // Synced from Loxo on its own schedule, and status/owner are edited live —
 // never freeze this page.
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage({ searchParams }: PageProps<"/accounts">) {
-  await requireAdmin();
+  await requireModule("accounts");
   const params = await searchParams;
   const companyParam = Array.isArray(params.company) ? params.company[0] : params.company;
   const searchParam = Array.isArray(params.q) ? params.q[0] : params.q;

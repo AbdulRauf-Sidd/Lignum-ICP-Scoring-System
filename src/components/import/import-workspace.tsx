@@ -10,13 +10,16 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -30,16 +33,10 @@ import { StatusBadge, TriageReasonBadge } from "@/components/shared/badges";
 import type { FailedCompany } from "@/lib/data/companies";
 import type { IcpProfileRow } from "@/lib/data/icp-profiles";
 import { cn } from "@/lib/utils";
+import { COUNTRIES, getCountryLabel, isCountryCode } from "@/lib/countries";
 import { toast } from "sonner";
 
-type CountryCode = "US" | "CA" | "GB";
 type RowIssue = "missing_name" | "missing_domain" | "malformed_domain" | "missing_country" | "invalid_country";
-
-const COUNTRIES: { code: CountryCode; label: string }[] = [
-  { code: "US", label: "US (US)" },
-  { code: "CA", label: "Canada (CA)" },
-  { code: "GB", label: "UK (GB)" },
-];
 
 interface Row {
   id: string;
@@ -57,7 +54,7 @@ function getRowIssues(name: string, domain: string, country: string): RowIssue[]
   if (!domain.trim()) issues.push("missing_domain");
   else if (!DOMAIN_RE.test(domain.trim())) issues.push("malformed_domain");
   if (!country.trim()) issues.push("missing_country");
-  else if (!COUNTRIES.some((option) => option.code === country.trim().toUpperCase())) issues.push("invalid_country");
+  else if (!isCountryCode(country)) issues.push("invalid_country");
   return issues;
 }
 
@@ -66,7 +63,7 @@ const ISSUE_LABEL: Record<RowIssue, string> = {
   missing_domain: "Missing domain",
   malformed_domain: "Malformed domain",
   missing_country: "Missing country",
-  invalid_country: "Invalid country — use US, CA, or GB",
+  invalid_country: "Invalid country — choose a country from the list",
 };
 
 let rowIdCounter = 0;
@@ -78,6 +75,43 @@ function nextRowId() {
 type SubmitResult =
   | { kind: "success"; raw: unknown }
   | { kind: "error"; message: string; details?: unknown };
+
+function CountryPicker({ value, onChange, id }: { value: string; onChange: (value: string) => void; id?: string }) {
+  const [open, setOpen] = React.useState(false);
+  const selected = COUNTRIES.find((country) => country.code === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button id={id} type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal">
+          {selected ? `${selected.label} (${selected.code})` : "Choose a country"}
+          <ChevronsUpDown className="size-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command>
+          <CommandInput placeholder="Search countries..." />
+          <CommandList>
+            <CommandEmpty>No country found.</CommandEmpty>
+            {COUNTRIES.map((country) => (
+              <CommandItem
+                key={country.code}
+                value={`${country.label} ${country.code}`}
+                onSelect={() => {
+                  onChange(country.code);
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn("size-4", value === country.code ? "opacity-100" : "opacity-0")} />
+                {country.label} ({country.code})
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function ImportWorkspace({
   scoredThisWeekCount,
@@ -91,7 +125,7 @@ export function ImportWorkspace({
   const [rows, setRows] = React.useState<Row[]>([]);
   const [manualName, setManualName] = React.useState("");
   const [manualDomain, setManualDomain] = React.useState("");
-  const [manualCountry, setManualCountry] = React.useState<CountryCode>("US");
+  const [manualCountry, setManualCountry] = React.useState("US");
   const [manualError, setManualError] = React.useState<string | null>(null);
   const [selectedIcpId, setSelectedIcpId] = React.useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = React.useState(false);
@@ -311,18 +345,7 @@ export function ImportWorkspace({
                 <Label htmlFor="manual-country">
                   Country <span className="text-destructive">*</span>
                 </Label>
-                <Select value={manualCountry} onValueChange={(value) => setManualCountry(value as CountryCode)}>
-                  <SelectTrigger id="manual-country" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COUNTRIES.map((country) => (
-                      <SelectItem key={country.code} value={country.code}>
-                        {country.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CountryPicker id="manual-country" value={manualCountry} onChange={setManualCountry} />
               </div>
               <Button type="submit">
                 <Plus /> Add to batch
@@ -425,18 +448,7 @@ export function ImportWorkspace({
                             placeholder="domain.com"
                             className="h-8 flex-1"
                           />
-                          <Select value={row.country} onValueChange={(value) => updateRowCountry(row.id, value)}>
-                            <SelectTrigger className="h-8 w-32">
-                              <SelectValue placeholder="Country" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {COUNTRIES.map((country) => (
-                                <SelectItem key={country.code} value={country.code}>
-                                  {country.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <CountryPicker value={row.country} onChange={(value) => updateRowCountry(row.id, value)} />
                           <Button variant="outline" size="sm" onClick={() => removeRow(row.id)}>
                             Remove
                           </Button>
@@ -457,7 +469,7 @@ export function ImportWorkspace({
                         <span className="min-w-0 flex-1 truncate text-sm">
                           {row.name || <span className="text-muted-foreground italic">Unnamed</span>}
                           <span className="ml-1.5 text-muted-foreground">{row.domain}</span>
-                          <span className="ml-1.5 text-muted-foreground">({row.country})</span>
+                          <span className="ml-1.5 text-muted-foreground">({getCountryLabel(row.country)})</span>
                         </span>
                         <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => removeRow(row.id)}>
                           <Trash2 className="size-3.5" />

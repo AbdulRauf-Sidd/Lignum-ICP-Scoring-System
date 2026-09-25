@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import { Badge } from "@/components/ui/badge";
 import { LinkLoadingIcon } from "@/components/layout/link-loading-icon";
+import { getModuleForPath, hasModuleAccess, type AppModule } from "@/lib/modules";
 
 const GROUP_ORDER = ["Prospects", "Oversight", "Accounts", "Admin"] as const;
 
@@ -51,18 +52,22 @@ function NavLink({
 
 export function SidebarNav({
   counts,
-  isAdmin,
+  modules,
   onNavigate,
 }: {
   counts: Partial<Record<"triage", number>>;
-  isAdmin: boolean;
+  modules: AppModule[];
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
-  const topLevelItems = NAV_ITEMS.filter((i) => !i.group && (!i.adminOnly || isAdmin));
+  const canSee = (href: string) => {
+    const requiredModule = getModuleForPath(href);
+    return !requiredModule || hasModuleAccess({ modules }, requiredModule);
+  };
+  const topLevelItems = NAV_ITEMS.filter((i) => !i.group && canSee(i.href));
 
   return (
     <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
@@ -80,7 +85,7 @@ export function SidebarNav({
         </div>
       )}
       {GROUP_ORDER.map((group) => {
-        const items = NAV_ITEMS.filter((i) => i.group === group && (!i.adminOnly || isAdmin));
+        const items = NAV_ITEMS.filter((i) => i.group === group && canSee(i.href));
         if (items.length === 0) return null;
         return (
           <div key={group} className="flex flex-col gap-1">

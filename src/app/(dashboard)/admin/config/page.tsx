@@ -2,13 +2,13 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ConfigWorkspace } from "@/components/admin/config-workspace";
 import { getIcpProfiles, getSectorTaxonomy } from "@/lib/data/icp-profiles";
 import { getModelSettings } from "@/lib/data/model-settings";
-import { requireAdmin } from "@/lib/supabase/auth-server";
+import { requireModule } from "@/lib/supabase/auth-server";
 
 // Admins edit this live — never freeze it.
 export const dynamic = "force-dynamic";
 
 export default async function ModelConfigPage() {
-  await requireAdmin();
+  await requireModule("admin");
   const [profiles, taxonomy, settings] = await Promise.all([getIcpProfiles(), getSectorTaxonomy(), getModelSettings()]);
 
   return (

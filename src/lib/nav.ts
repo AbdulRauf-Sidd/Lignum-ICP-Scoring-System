@@ -18,7 +18,6 @@ export interface NavItem {
   icon: LucideIcon;
   group?: "Prospects" | "Oversight" | "Accounts" | "Admin";
   badgeKey?: "triage";
-  adminOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -29,7 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/contacts", label: "Contacts", icon: Users, group: "Prospects" },
   { href: "/usage", label: "Usage & audit", icon: Activity, group: "Oversight" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, group: "Oversight" },
-  { href: "/accounts", label: "Accounts", icon: Building2, group: "Accounts", adminOnly: true },
-  { href: "/admin/config", label: "Model config", icon: Settings2, group: "Admin", adminOnly: true },
-  { href: "/admin/users", label: "Users", icon: UserCog, group: "Admin", adminOnly: true },
+  { href: "/accounts", label: "Accounts", icon: Building2, group: "Accounts" },
+  { href: "/admin/config", label: "Model config", icon: Settings2, group: "Admin" },
+  { href: "/admin/users", label: "Users", icon: UserCog, group: "Admin" },
 ];

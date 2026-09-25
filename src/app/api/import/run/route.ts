@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/supabase/auth-server";
+import { isCountryCode } from "@/lib/countries";
 
 const WEBHOOK_SECRET_HEADER = "X-Lignum-Webhook-Secret";
 
 interface ImportRow {
   name: string;
   domain: string;
-  selected_country: "US" | "CA" | "GB";
+  selected_country: string;
 }
 
 interface ImportPayload {
@@ -24,7 +25,7 @@ function isImportPayload(value: unknown): value is ImportPayload {
       r &&
       typeof r === "object" &&
       typeof (r as ImportRow).domain === "string" &&
-      ["US", "CA", "GB"].includes((r as ImportRow).selected_country),
+      isCountryCode((r as ImportRow).selected_country),
   );
 }
 
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   if (!isImportPayload(payload)) {
     return NextResponse.json(
-      { error: "Expected { icp_name, rows: [{ name, domain, selected_country }] } with selected_country set to US, CA, or GB." },
+      { error: "Expected { icp_name, rows: [{ name, domain, selected_country }] } with selected_country set to a valid country code." },
       { status: 400 },
     );
   }

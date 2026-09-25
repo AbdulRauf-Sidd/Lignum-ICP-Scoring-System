@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { normalizeModules, type AppModule, hasModuleAccess } from "@/lib/modules";
 
 // For Server Components/Actions/Route Handlers that need to know who's
 // signed in. Cookie writes are wrapped in try/catch because Server
@@ -25,13 +26,11 @@ export async function getSupabaseAuthServerClient() {
   });
 }
 
-export type UserRole = "admin" | "user";
-
 export interface SessionUser {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  modules: AppModule[];
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -42,27 +41,26 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   if (!user || !user.email) return null;
 
-  const role: UserRole = user.app_metadata?.role === "admin" ? "admin" : "user";
   const name: string = user.user_metadata?.full_name || user.email.split("@")[0];
+  const modules = normalizeModules(user.app_metadata?.modules, user.app_metadata?.role);
 
-  return { id: user.id, email: user.email, name, role };
+  return { id: user.id, email: user.email, name, modules };
 }
 
 // Belt-and-suspenders check for admin-only pages — middleware already
 // blocks these routes for non-admins, but a Server Component shouldn't rely
 // on that alone.
-export async function requireAdmin(): Promise<SessionUser> {
-  const user = await getSessionUser();
-  if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/");
-  return user;
-}
-
 // Belt-and-suspenders check for signed-in-only pages — middleware already
 // blocks unauthenticated requests, but a Server Component shouldn't rely on
 // that alone.
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  return user;
+}
+
+export async function requireModule(module: AppModule): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!hasModuleAccess(user, module)) redirect("/");
   return user;
 }

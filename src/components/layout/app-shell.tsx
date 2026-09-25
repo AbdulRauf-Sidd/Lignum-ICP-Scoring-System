@@ -70,7 +70,6 @@ function AppShellInner({
   const { contentRef } = usePageTransition();
 
   const counts = { triage: triageCount };
-  const isAdmin = user.role === "admin";
   const initials = user.email.slice(0, 2).toUpperCase();
 
   return (
@@ -79,7 +78,7 @@ function AppShellInner({
         <AutoRefresh />
         <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
           <SidebarBrand />
-          <SidebarNav counts={counts} isAdmin={isAdmin} />
+          <SidebarNav counts={counts} modules={user.modules} />
           <SidebarAccount user={user} initials={initials} />
         </aside>
 
@@ -96,7 +95,7 @@ function AppShellInner({
                 <SidebarBrand />
                 <SidebarNav
                   counts={counts}
-                  isAdmin={isAdmin}
+                  modules={user.modules}
                   onNavigate={() => setMobileOpen(false)}
                 />
                 <SidebarAccount user={user} initials={initials} />
@@ -176,7 +175,7 @@ function SidebarAccount({ user, initials }: { user: SessionUser; initials: strin
             </Avatar>
             <div className="min-w-0 flex-1 leading-tight">
               <p className="truncate text-sm font-medium text-sidebar-foreground">{user.email}</p>
-              <p className="text-[11px] capitalize text-sidebar-foreground/60">{user.role}</p>
+              <p className="text-[11px] text-sidebar-foreground/60">{user.modules.length} modules enabled</p>
             </div>
             <ChevronUp className="size-3.5 shrink-0 text-sidebar-foreground/50" />
           </button>
@@ -184,7 +183,7 @@ function SidebarAccount({ user, initials }: { user: SessionUser; initials: strin
         <DropdownMenuContent align="start" side="top" className="w-56">
           <DropdownMenuLabel className="font-normal">
             <p className="truncate text-sm font-medium">{user.email}</p>
-            <p className="text-xs capitalize text-muted-foreground">{user.role}</p>
+            <p className="text-xs text-muted-foreground">{user.modules.length} modules enabled</p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => signOut()} variant="destructive">

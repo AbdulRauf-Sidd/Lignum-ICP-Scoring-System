@@ -2,21 +2,20 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ShieldCheck, UserPlus } from "lucide-react";
+import { Check, Loader2, UserPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { formatDate } from "@/lib/format";
 import type { AppUser } from "@/lib/data/users";
-import type { UserRole } from "@/lib/supabase/auth-server";
-import { createUser, updateUserRole } from "@/app/(dashboard)/admin/users/actions";
+import { createUser, setUserActive, updateUserModules } from "@/app/(dashboard)/admin/users/actions";
+import { DEFAULT_USER_MODULES, MODULE_DESCRIPTIONS, MODULE_LABELS, APP_MODULES, type AppModule } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-const ROLE_LABELS: Record<UserRole, string> = { admin: "Admin", user: "User" };
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -30,7 +29,7 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [fullName, setFullName] = React.useState("");
-  const [role, setRole] = React.useState<UserRole>("user");
+  const [modules, setModules] = React.useState<AppModule[]>(DEFAULT_USER_MODULES);
   const [creating, setCreating] = React.useState(false);
   const [updatingId, setUpdatingId] = React.useState<string | null>(null);
 
@@ -38,12 +37,12 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
     e.preventDefault();
     setCreating(true);
     try {
-      await createUser({ email, password, fullName, role });
-      toast.success(`${email} added as ${ROLE_LABELS[role]}`);
+      await createUser({ email, password, fullName, modules });
+      toast.success(`${email} added`);
       setEmail("");
       setPassword("");
       setFullName("");
-      setRole("user");
+      setModules(DEFAULT_USER_MODULES);
       router.refresh();
     } catch (err) {
       toast.error("Failed to create user", { description: err instanceof Error ? err.message : undefined });
@@ -52,17 +51,36 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
     }
   }
 
-  async function handleRoleChange(userId: string, nextRole: UserRole) {
+  async function handleModulesChange(userId: string, nextModules: AppModule[]) {
     setUpdatingId(userId);
     try {
-      await updateUserRole(userId, nextRole);
-      toast.success("Role updated");
+      await updateUserModules(userId, nextModules);
+      toast.success("Access updated");
       router.refresh();
     } catch (err) {
-      toast.error("Failed to update role", { description: err instanceof Error ? err.message : undefined });
+      toast.error("Failed to update access", { description: err instanceof Error ? err.message : undefined });
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  async function handleActiveChange(userId: string, active: boolean) {
+    setUpdatingId(userId);
+    try {
+      await setUserActive(userId, active);
+      toast.success(active ? "User activated" : "User made inactive");
+      router.refresh();
+    } catch (err) {
+      toast.error("Failed to update account status", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function toggleModule(current: AppModule[], module: AppModule): AppModule[] {
+    if (module === "prospects") return current;
+    if (current.includes(module)) return current.filter((item) => item !== module);
+    return [...current, module];
   }
 
   return (
@@ -101,19 +119,18 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
                 placeholder="At least 8 characters"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Role</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+              <Label className="text-xs text-muted-foreground">Module access</Label>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {APP_MODULES.map((module) => (
+                  <label key={module} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={modules.includes(module)} disabled={module === "prospects"} onCheckedChange={() => setModules((current) => toggleModule(current, module))} />
+                    {MODULE_LABELS[module]}
+                  </label>
+                ))}
+              </div>
             </div>
-            <Button type="submit" disabled={creating} className="w-fit sm:col-span-2 lg:col-span-4">
+            <Button type="submit" disabled={creating || modules.length === 0} className="w-fit sm:col-span-2 lg:col-span-4">
               {creating && <Loader2 className="size-4 animate-spin" />}
               Add user
             </Button>
@@ -125,8 +142,7 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
         <CardHeader>
           <CardTitle>Users</CardTitle>
           <CardDescription>
-            {users.length} account{users.length === 1 ? "" : "s"} · Admins can reach every page; Users can&apos;t open Accounts or
-            Model config.
+            {users.length} account{users.length === 1 ? "" : "s"} · Prospects are enabled by default for new users.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col divide-y">
@@ -150,20 +166,28 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
                 Joined {formatDate(u.createdAt)}
                 {u.lastSignInAt ? ` · last in ${formatDate(u.lastSignInAt)}` : " · never signed in"}
               </span>
-              <Select
-                value={u.role}
-                onValueChange={(v) => handleRoleChange(u.id, v as UserRole)}
-                disabled={updatingId === u.id || u.id === currentUserId}
-              >
-                <SelectTrigger className={cn("w-28 shrink-0", u.role === "admin" && "text-primary")}>
-                  {updatingId === u.id ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex max-w-md flex-wrap justify-end gap-1.5">
+                {APP_MODULES.map((module) => {
+                  const enabled = u.modules.includes(module);
+                  return (
+                    <button
+                      key={module}
+                      type="button"
+                      title={MODULE_DESCRIPTIONS[module]}
+                      disabled={updatingId === u.id || u.id === currentUserId || module === "prospects"}
+                      onClick={() => handleModulesChange(u.id, toggleModule(u.modules, module))}
+                      className={cn("rounded-md border px-2 py-1 text-xs", enabled ? "border-primary/40 bg-primary/10 text-primary" : "text-muted-foreground")}
+                    >
+                      {enabled && <Check className="mr-1 inline size-3" />}
+                      {MODULE_LABELS[module]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs text-muted-foreground">{u.active ? "Active" : "Inactive"}</span>
+                <Switch checked={u.active} disabled={updatingId === u.id || u.id === currentUserId} onCheckedChange={(checked) => handleActiveChange(u.id, checked)} />
+              </div>
             </div>
           ))}
         </CardContent>
