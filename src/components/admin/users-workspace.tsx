@@ -106,9 +106,7 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   function toggleModule(current: AppModule[], module: AppModule): AppModule[] {
-    if (current.includes(module)) {
-      return current.length > 1 ? current.filter((item) => item !== module) : current;
-    }
+    if (current.includes(module)) return current.filter((item) => item !== module);
     return [...current, module];
   }
 
