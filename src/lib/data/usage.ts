@@ -54,12 +54,22 @@ export interface UsageSummary {
 }
 
 // usage_runs.run_by stores the acting user's auth id (uuid); swap it for a
-// display name. Unknown ids (e.g. a deleted user) fall back to "—".
-async function withRunByNames<T extends { run_by: string | null }>(rows: T[]): Promise<T[]> {
-  if (!rows.some((r) => r.run_by)) return rows;
-  const users = await getUsers();
-  const nameById = new Map(users.map((u) => [u.id, u.name]));
-  return rows.map((r) => ({ ...r, run_by: r.run_by ? (nameById.get(r.run_by) ?? null) : null }));
+// display name. Scheduled repulls have no user, so they get a fixed label.
+// Unknown ids (e.g. a deleted user) fall back to "—".
+const AUTO_REPULL_LABEL = "Automated (scheduled repull)";
+
+async function withRunByNames<T extends { run_by: string | null; run_type: string }>(rows: T[]): Promise<T[]> {
+  const nameById = rows.some((r) => r.run_by)
+    ? new Map((await getUsers()).map((u) => [u.id, u.name]))
+    : new Map<string, string>();
+  return rows.map((r) => ({
+    ...r,
+    run_by: r.run_by
+      ? (nameById.get(r.run_by) ?? null)
+      : r.run_type === "auto_repull"
+        ? AUTO_REPULL_LABEL
+        : null,
+  }));
 }
 
 export async function getUsageRuns(limit = 200): Promise<UsageRunDetail[]> {
