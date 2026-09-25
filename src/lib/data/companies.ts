@@ -360,7 +360,7 @@ export async function getHomeStats(): Promise<HomeStats> {
 
   const [{ data: statusRows, error: statusError }, { count: scoredThisWeekCount, error: scoredError }] =
     await Promise.all([
-      supabase.from("companies").select("status, triage_reason"),
+      supabase.from("companies").select("status, triage_reason, updated_at"),
       supabase
         .from("companies")
         .select("id", { count: "exact", head: true })
@@ -371,7 +371,7 @@ export async function getHomeStats(): Promise<HomeStats> {
   if (statusError) throw new Error(`Failed to load companies: ${statusError.message}`);
   if (scoredError) throw new Error(`Failed to load scored companies: ${scoredError.message}`);
 
-  const rows = (statusRows ?? []) as { status: CompanyStatus; triage_reason: TriageReason }[];
+  const rows = (statusRows ?? []) as { status: CompanyStatus; triage_reason: TriageReason; updated_at: string | null }[];
   const triageRows = rows.filter((r) => r.status === "triage");
 
   const recentFailedCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
