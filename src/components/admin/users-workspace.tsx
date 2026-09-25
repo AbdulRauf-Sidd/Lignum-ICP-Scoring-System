@@ -24,6 +24,10 @@ function initials(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
+function usersSnapshot(users: AppUser[]): string {
+  return JSON.stringify(users.map((user) => [user.id, user.modules, user.active]));
+}
+
 export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; currentUserId: string }) {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
@@ -32,6 +36,16 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   const [modules, setModules] = React.useState<AppModule[]>(DEFAULT_USER_MODULES);
   const [creating, setCreating] = React.useState(false);
   const [updatingId, setUpdatingId] = React.useState<string | null>(null);
+  const [usersLoading, setUsersLoading] = React.useState(false);
+  const pendingUsersSnapshot = React.useRef<string | null>(null);
+  const currentUsersSnapshot = usersSnapshot(users);
+
+  React.useEffect(() => {
+    if (usersLoading && pendingUsersSnapshot.current !== currentUsersSnapshot) {
+      pendingUsersSnapshot.current = null;
+      setUsersLoading(false);
+    }
+  }, [currentUsersSnapshot, usersLoading]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -52,12 +66,16 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   async function handleModulesChange(userId: string, nextModules: AppModule[]) {
+    pendingUsersSnapshot.current = currentUsersSnapshot;
+    setUsersLoading(true);
     setUpdatingId(userId);
     try {
       await updateUserModules(userId, nextModules);
       toast.success("Access updated");
       router.refresh();
     } catch (err) {
+      pendingUsersSnapshot.current = null;
+      setUsersLoading(false);
       toast.error("Failed to update access", { description: err instanceof Error ? err.message : undefined });
     } finally {
       setUpdatingId(null);
@@ -65,12 +83,16 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   async function handleActiveChange(userId: string, active: boolean) {
+    pendingUsersSnapshot.current = currentUsersSnapshot;
+    setUsersLoading(true);
     setUpdatingId(userId);
     try {
       await setUserActive(userId, active);
       toast.success(active ? "User activated" : "User made inactive");
       router.refresh();
     } catch (err) {
+      pendingUsersSnapshot.current = null;
+      setUsersLoading(false);
       toast.error("Failed to update account status", { description: err instanceof Error ? err.message : undefined });
     } finally {
       setUpdatingId(null);
@@ -78,7 +100,6 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
   }
 
   function toggleModule(current: AppModule[], module: AppModule): AppModule[] {
-    if (module === "prospects") return current;
     if (current.includes(module)) return current.filter((item) => item !== module);
     return [...current, module];
   }
@@ -124,13 +145,13 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {APP_MODULES.map((module) => (
                   <label key={module} className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={modules.includes(module)} disabled={module === "prospects"} onCheckedChange={() => setModules((current) => toggleModule(current, module))} />
+                    <Checkbox checked={modules.includes(module)} onCheckedChange={() => setModules((current) => toggleModule(current, module))} />
                     {MODULE_LABELS[module]}
                   </label>
                 ))}
               </div>
             </div>
-            <Button type="submit" disabled={creating || modules.length === 0} className="w-fit sm:col-span-2 lg:col-span-4">
+            <Button type="submit" disabled={creating} className="w-fit sm:col-span-2 lg:col-span-4">
               {creating && <Loader2 className="size-4 animate-spin" />}
               Add user
             </Button>
@@ -146,7 +167,11 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col divide-y">
-          {users.map((u) => (
+          {usersLoading ? (
+            <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 size-4 animate-spin" /> Updating users...
+            </div>
+          ) : users.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-bold text-muted-foreground">
                 {initials(u.name)}
@@ -174,7 +199,7 @@ export function UsersWorkspace({ users, currentUserId }: { users: AppUser[]; cur
                       key={module}
                       type="button"
                       title={MODULE_DESCRIPTIONS[module]}
-                      disabled={updatingId === u.id || u.id === currentUserId || module === "prospects"}
+                      disabled={updatingId === u.id || u.id === currentUserId}
                       onClick={() => handleModulesChange(u.id, toggleModule(u.modules, module))}
                       className={cn("rounded-md border px-2 py-1 text-xs", enabled ? "border-primary/40 bg-primary/10 text-primary" : "text-muted-foreground")}
                     >

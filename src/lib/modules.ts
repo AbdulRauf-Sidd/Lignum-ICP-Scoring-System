@@ -26,8 +26,7 @@ export const MODULE_PATHS: Record<AppModule, string[]> = {
 
 export function normalizeModules(value: unknown, legacyRole?: unknown): AppModule[] {
   if (!Array.isArray(value)) return legacyRole === "admin" ? [...APP_MODULES] : [...DEFAULT_USER_MODULES];
-  const selected = APP_MODULES.filter((module) => value.includes(module));
-  return selected.includes("prospects") ? selected : [...DEFAULT_USER_MODULES, ...selected];
+  return APP_MODULES.filter((module) => value.includes(module));
 }
 
 export function hasModuleAccess(user: { modules: AppModule[] }, module: AppModule): boolean {
