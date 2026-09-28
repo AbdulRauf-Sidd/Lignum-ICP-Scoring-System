@@ -5,7 +5,6 @@ import { requireAdmin } from "@/lib/supabase/auth-server";
 import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import {
-  ALLOWED_JOB_CATEGORIES,
   EXCLUDED_JOB_TYPES,
   QUALITATIVE_METRICS,
   type QualitativeMetric,
@@ -38,10 +37,9 @@ export interface AccountMetrics {
   // rather than a live/cached fetch — lets the caller avoid claiming "today's
   // rates" when they aren't. Meaningless when revenueGbp is null.
   revenueRatesLive: boolean;
-  // Revenue per CV / per first interview — divides by revenue from Tier 1 /
-  // Tier 2 jobs only (not revenueGbp above, which is wider) since these two
-  // ratios are meant to reflect standard per-hire recruiting work. Null when
-  // there's no GBP figure for that subset or the count is 0.
+  // Revenue per CV / per first interview — same numerator as Total Revenue
+  // (revenueGbp) divided by totalCvs / firstInterviews. Null when there's no
+  // GBP revenue figure or the count is 0.
   cvCost: number | null;
   interviewCost: number | null;
   // Jobs added in the date range, any job category.
@@ -107,21 +105,15 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
 
   const { data: jobRows, error: jobsError } = await supabase
     .from("active_accounts_jobs")
-    .select("job_id, created_at, job_type, job_category")
+    .select("job_id, created_at, job_type")
     .eq("company_id", companyId);
   if (jobsError) throw new Error(`Failed to load account jobs: ${jobsError.message}`);
 
   // MSP, Retainer and Dropout jobs are excluded from totalJobs. Total
-  // Revenue itself is never job-filtered (any category, any job type) —
-  // only revenue-per-CV and revenue-per-interview divide by the Tier 1/2,
-  // non-MSP/Retainer/Dropout subset below.
+  // Revenue (and revenue-per-CV / revenue-per-interview, which share its
+  // numerator) is never job-filtered — any category, any job type.
   const includedJobRows = (jobRows ?? []).filter(
     (r) => !EXCLUDED_JOB_TYPES.includes(r.job_type as (typeof EXCLUDED_JOB_TYPES)[number]),
-  );
-  const tierJobIds = new Set(
-    includedJobRows
-      .filter((r) => ALLOWED_JOB_CATEGORIES.includes(r.job_category as (typeof ALLOWED_JOB_CATEGORIES)[number]))
-      .map((r) => r.job_id as number),
   );
 
   const startMs = startDate ? new Date(startDate).getTime() : -Infinity;
@@ -179,35 +171,27 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
   // Roughly a fifth of companies have placements in more than one currency —
   // summing those together would misrepresent the total, so revenue is kept
   // as separate per-currency totals as well as a converted-to-GBP figure.
-  // A second, Tier 1/2-only total (tierRevenueByCurrency) feeds cvCost /
-  // interviewCost below rather than the wider `revenue` figure.
   const revenueByCurrency = new Map<string | null, number>();
-  const tierRevenueByCurrency = new Map<string | null, number>();
   for (const p of placements) {
     const amount = placementRevenue(p);
     if (amount === null) continue;
     const code = p.currency?.code ?? null;
     revenueByCurrency.set(code, (revenueByCurrency.get(code) ?? 0) + amount);
-    if (tierJobIds.has(p.job_id)) {
-      tierRevenueByCurrency.set(code, (tierRevenueByCurrency.get(code) ?? 0) + amount);
-    }
   }
   const revenue = Array.from(revenueByCurrency.entries())
     .map(([code, amount]) => ({ code, amount }))
     .sort((a, b) => b.amount - a.amount);
 
   const { rates, live } = await getGbpExchangeRates();
-  const toGbp = (byCurrency: Map<string | null, number>): number | null => {
-    let gbp: number | null = 0;
-    for (const [code, amount] of byCurrency) {
-      const converted = convertToGbp(amount, code, rates);
-      if (converted === null) return null;
-      gbp += converted;
+  let revenueGbp: number | null = 0;
+  for (const [code, amount] of revenueByCurrency) {
+    const converted = convertToGbp(amount, code, rates);
+    if (converted === null) {
+      revenueGbp = null;
+      break;
     }
-    return gbp;
-  };
-  const revenueGbp = toGbp(revenueByCurrency);
-  const tierRevenueGbp = toGbp(tierRevenueByCurrency);
+    revenueGbp += converted;
+  }
 
   const totalCvs = countCvs(cvRows);
   const firstInterviews = countFirstInterviews(interviewRows);
@@ -222,8 +206,8 @@ export async function getAccountMetrics(companyId: number, startDate: string | n
     revenue,
     revenueGbp,
     revenueRatesLive: live,
-    cvCost: tierRevenueGbp !== null && totalCvs > 0 ? tierRevenueGbp / totalCvs : null,
-    interviewCost: tierRevenueGbp !== null && firstInterviews > 0 ? tierRevenueGbp / firstInterviews : null,
+    cvCost: revenueGbp !== null && totalCvs > 0 ? revenueGbp / totalCvs : null,
+    interviewCost: revenueGbp !== null && firstInterviews > 0 ? revenueGbp / firstInterviews : null,
     totalJobs,
     recruiterCost,
     accountManagementCost,
