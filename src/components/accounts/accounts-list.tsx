@@ -32,8 +32,8 @@ type MetricView = "revenue" | "cvCost" | "interviewCost";
 
 const METRIC_VIEW_LABELS: Record<MetricView, string> = {
   revenue: "Revenue",
-  cvCost: "CV Cost",
-  interviewCost: "Interview Cost",
+  cvCost: "Revenue Per CV",
+  interviewCost: "Revenue Per Interview",
 };
 
 function metricValue(a: AccountListItem, view: MetricView): number | null {
@@ -516,8 +516,8 @@ export function AccountsList({
                   <SortableHead label="Company" active={sortBy === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
                   <SortableHead label="Owner" active={sortBy === "owner"} desc={sortDesc} onClick={() => toggleSort("owner")} />
                   <SortableHead label="Revenue" className="text-right" active={sortBy === "revenue"} desc={sortDesc} onClick={() => toggleSort("revenue")} />
-                  <SortableHead label="CV Cost" className="text-right" active={sortBy === "cvCost"} desc={sortDesc} onClick={() => toggleSort("cvCost")} />
-                  <SortableHead label="Interview Cost" className="text-right" active={sortBy === "interviewCost"} desc={sortDesc} onClick={() => toggleSort("interviewCost")} />
+                  <SortableHead label="Revenue Per CV" className="text-right" active={sortBy === "cvCost"} desc={sortDesc} onClick={() => toggleSort("cvCost")} />
+                  <SortableHead label="Revenue Per Interview" className="text-right" active={sortBy === "interviewCost"} desc={sortDesc} onClick={() => toggleSort("interviewCost")} />
                   <SortableHead label="Updated" className="text-right" active={sortBy === "updated"} desc={sortDesc} onClick={() => toggleSort("updated")} />
                   <TableHead className="w-8" />
                 </TableRow>

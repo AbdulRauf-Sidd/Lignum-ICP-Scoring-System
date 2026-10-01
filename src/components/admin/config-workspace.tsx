@@ -1237,12 +1237,12 @@ export function ConfigWorkspace({
 
             <Card>
               <CardHeader>
-                <CardTitle>CV cost</CardTitle>
+                <CardTitle>Recruiter Cost</CardTitle>
                 <CardDescription>Reference cost per CV submitted, for account pricing.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-end gap-6">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">CV cost</Label>
+                  <Label className="text-xs text-muted-foreground">Recruiter Cost</Label>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm text-muted-foreground">$</span>
                     <Input
@@ -1262,12 +1262,12 @@ export function ConfigWorkspace({
 
             <Card>
               <CardHeader>
-                <CardTitle>Interview cost</CardTitle>
+                <CardTitle>Account Management Cost</CardTitle>
                 <CardDescription>Reference cost per first interview, for account pricing.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-end gap-6">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Interview cost</Label>
+                  <Label className="text-xs text-muted-foreground">Account Management Cost</Label>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm text-muted-foreground">$</span>
                     <Input
