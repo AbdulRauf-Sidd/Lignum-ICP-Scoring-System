@@ -30,6 +30,9 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // These routes are required to start and complete Supabase email recovery.
+  if (pathname === "/password-recovery" || pathname === "/auth/confirm") return response;
+
   if (!user) {
     if (pathname === "/login") return response;
     const loginUrl = new URL("/login", request.url);

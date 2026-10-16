@@ -17,6 +17,7 @@ import { computeAccountHealth, type HealthBand } from "@/lib/account-health";
 import type { Company } from "@/lib/types";
 import type { ContactRow } from "@/lib/data/contacts";
 import type { AccountListItem, AccountHeader, AccountJob, QualitativeRatings, TalentInsights, HealthWeights, AccountFirmographics as AccountFirmographicsData } from "@/lib/data/accounts";
+import type { AccountStatColumn } from "@/lib/data/accounts";
 import { type DatePreset, datePresetRange } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,7 @@ const HEALTH_BAND_META: Record<HealthBand, { label: string; badge: string; bar: 
 
 export function AccountsWorkspace({
   accounts,
+  visibleStatColumns,
   initialSearch,
   initialDate,
   selectedCompanyId,
@@ -41,6 +43,7 @@ export function AccountsWorkspace({
   enrichmentContacts,
 }: {
   accounts: AccountListItem[];
+  visibleStatColumns: AccountStatColumn[];
   initialSearch: string;
   initialDate: { preset: DatePreset; customStart: string; customEnd: string };
   selectedCompanyId: number | null;
@@ -77,6 +80,7 @@ export function AccountsWorkspace({
         {!selectedCompanyId || !header ? (
           <AccountsList
             accounts={accounts}
+            visibleStatColumns={visibleStatColumns}
             initialSearch={initialSearch}
             initialDate={initialDate}
             onNavigate={() => setNavigating(true)}

@@ -9,11 +9,13 @@ import {
   getHealthWeights,
   getAccountFirmographics,
   DEFAULT_HEALTH_WEIGHTS,
+  normalizeAccountStatColumns,
 } from "@/lib/data/accounts";
 import { DATE_PRESET_LABELS, datePresetRange, type DatePreset } from "@/lib/date-presets";
 import { getCompanyById } from "@/lib/data/companies";
 import { getContactsForCompanies } from "@/lib/data/contacts";
 import { requireModule } from "@/lib/supabase/auth-server";
+import { getSupabaseAuthServerClient } from "@/lib/supabase/auth-server";
 
 // Synced from Loxo on its own schedule, and status/owner are edited live —
 // never freeze this page.
@@ -21,6 +23,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountsPage({ searchParams }: PageProps<"/accounts">) {
   await requireModule("accounts");
+  const auth = await getSupabaseAuthServerClient();
+  const { data: { user } } = await auth.auth.getUser();
+  const visibleStatColumns = normalizeAccountStatColumns(user?.user_metadata?.account_stat_columns);
   const params = await searchParams;
   const companyParam = Array.isArray(params.company) ? params.company[0] : params.company;
   const searchParam = Array.isArray(params.q) ? params.q[0] : params.q;
@@ -67,6 +72,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/account
       <PageHeader title="Accounts" description="Company records synced from Loxo - jobs, candidates and placements." />
       <AccountsWorkspace
         accounts={accounts}
+        visibleStatColumns={visibleStatColumns}
         initialSearch={searchParam ?? ""}
         initialDate={{ preset, customStart, customEnd }}
         selectedCompanyId={selectedCompanyId}

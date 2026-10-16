@@ -2,6 +2,8 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { FieldSource, MatchedAccount } from "@/lib/types";
 import { normalizeDomain } from "@/lib/domain";
 import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
+import { getModelSettings } from "@/lib/data/model-settings";
+import type { CurrencyAmount } from "@/lib/format";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -23,12 +25,31 @@ export interface AccountListItem {
   status: string;
   ownedBy: string | null;
   totalRevenue: number | null;
+  revenue: CurrencyAmount[];
+  totalCvs: number;
+  firstInterviews: number;
+  totalPlacements: number;
+  recruiterCost: number | null;
+  accountManagementCost: number | null;
+  businessCost: number | null;
   revenueCurrencyCode: string | null;
   // totalRevenue / total CVs and / total first interviews, scoped to the
   // same date range as totalRevenue. Null when there are none.
   cvCost: number | null;
   interviewCost: number | null;
   updatedAt: string;
+}
+
+export const ACCOUNT_STAT_COLUMNS = [
+  "totalRevenue", "totalCvs", "firstInterviews", "totalPlacements", "revenuePerCv",
+  "revenuePerInterview", "recruiterCost", "accountManagementCost", "businessCost",
+] as const;
+export type AccountStatColumn = (typeof ACCOUNT_STAT_COLUMNS)[number];
+export const DEFAULT_ACCOUNT_STAT_COLUMNS: AccountStatColumn[] = ["totalRevenue", "revenuePerCv", "revenuePerInterview"];
+
+export function normalizeAccountStatColumns(value: unknown): AccountStatColumn[] {
+  if (!Array.isArray(value)) return [...DEFAULT_ACCOUNT_STAT_COLUMNS];
+  return ACCOUNT_STAT_COLUMNS.filter((column) => value.includes(column));
 }
 
 export interface AccountHeader {
@@ -171,6 +192,19 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
     }
   };
+  const fetchJobRows = async (): Promise<{ company_id: number; created_at: string; job_type: string | null }[]> => {
+    const allRows: { company_id: number; created_at: string; job_type: string | null }[] = [];
+    for (let offset = 0; ; offset += PLACEMENT_PAGE_SIZE) {
+      let query = supabase.from("active_accounts_jobs").select("company_id, created_at, job_type");
+      if (startIso) query = query.gte("created_at", startIso);
+      if (endIso) query = query.lte("created_at", endIso);
+      const { data, error } = await query.order("job_id", { ascending: true }).range(offset, offset + PLACEMENT_PAGE_SIZE - 1);
+      if (error) throw new Error(`Failed to load account jobs: ${error.message}`);
+      const page = (data ?? []) as { company_id: number; created_at: string; job_type: string | null }[];
+      allRows.push(...page);
+      if (page.length < PLACEMENT_PAGE_SIZE) return allRows;
+    }
+  };
   let accountsQuery = supabase
     .from("active_accounts")
     .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
@@ -179,11 +213,13 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, placementRows, { rates }, eventRows] = await Promise.all([
+  const [{ data, error }, placementRows, jobRows, { rates }, eventRows, modelSettings] = await Promise.all([
     accountsQuery,
     fetchPlacementRows(),
+    fetchJobRows(),
     getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
+    getModelSettings(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
@@ -204,7 +240,9 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
   }
 
   const revenueByCompany = new Map<number, number | null>();
+  const revenueCurrencyByCompany = new Map<number, Map<string | null, number>>();
   for (const [companyId, revenueByCurrency] of revenueByCompanyCurrency) {
+    revenueCurrencyByCompany.set(companyId, revenueByCurrency);
     let revenueGbp: number | null = 0;
     for (const [code, amount] of revenueByCurrency) {
       const converted = convertToGbp(amount, code, rates);
@@ -219,11 +257,23 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
 
   const cvCountByCompany = countEventsByCompany(eventRows, [CV_ACTIVITY_KEY]);
   const interviewCountByCompany = countEventsByCompany(eventRows, FIRST_INTERVIEW_ACTIVITY_KEYS);
+  const placementCountByCompany = new Map<number, number>();
+  for (const p of placementRows) placementCountByCompany.set(p.company_id, (placementCountByCompany.get(p.company_id) ?? 0) + 1);
+  const includedJobCountByCompany = new Map<number, number>();
+  for (const job of jobRows) {
+    if (EXCLUDED_JOB_TYPES.includes(job.job_type as (typeof EXCLUDED_JOB_TYPES)[number])) continue;
+    includedJobCountByCompany.set(job.company_id, (includedJobCountByCompany.get(job.company_id) ?? 0) + 1);
+  }
 
   return ((data ?? []) as unknown as AccountListRow[]).map((r) => {
     const totalRevenue = revenueByCompany.has(r.company_id) ? (revenueByCompany.get(r.company_id) ?? null) : 0;
     const cvCount = cvCountByCompany.get(r.company_id) ?? 0;
     const interviewCount = interviewCountByCompany.get(r.company_id) ?? 0;
+    const totalCvs = cvCountByCompany.get(r.company_id) ?? 0;
+    const totalPlacements = placementCountByCompany.get(r.company_id) ?? 0;
+    const totalJobs = includedJobCountByCompany.get(r.company_id) ?? 0;
+    const recruiterCost = modelSettings.cv_cost !== null ? totalCvs * modelSettings.cv_cost : null;
+    const accountManagementCost = modelSettings.interview_cost !== null ? totalJobs * modelSettings.interview_cost : null;
     return {
       companyId: r.company_id,
       companyName: r.company_name,
@@ -232,6 +282,13 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       // totalRevenue below. Null when there are none.
       cvCost: totalRevenue !== null && cvCount > 0 ? totalRevenue / cvCount : null,
       interviewCost: totalRevenue !== null && interviewCount > 0 ? totalRevenue / interviewCount : null,
+      totalCvs,
+      firstInterviews: interviewCount,
+      totalPlacements,
+      revenue: Array.from(revenueCurrencyByCompany.get(r.company_id)?.entries() ?? []).map(([code, amount]) => ({ code, amount })),
+      recruiterCost,
+      accountManagementCost,
+      businessCost: recruiterCost !== null && accountManagementCost !== null ? recruiterCost + accountManagementCost : null,
       ownedBy: r.owned_by,
       totalRevenue,
       revenueCurrencyCode: "GBP",

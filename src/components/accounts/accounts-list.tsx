@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, Settings2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,35 +11,64 @@ import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency, formatDate } from "@/lib/format";
-import type { AccountListItem } from "@/lib/data/accounts";
+import { formatCurrency, formatDate, formatMultiCurrency, formatNumber } from "@/lib/format";
+import { ACCOUNT_STAT_COLUMNS, type AccountStatColumn, type AccountListItem } from "@/lib/data/accounts";
+import { saveAccountStatColumns } from "@/app/(dashboard)/accounts/actions";
 import { type DatePreset, DATE_PRESET_LABELS } from "@/lib/date-presets";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-type SortKey = "name" | "owner" | "revenue" | "cvCost" | "interviewCost" | "updated";
+type SortKey = "name" | "owner" | AccountStatColumn | "updated";
 
 const SORT_LABELS: Record<SortKey, string> = {
   name: "Company",
   owner: "Owner",
-  revenue: "Revenue",
-  cvCost: "CV Cost",
-  interviewCost: "Interview Cost",
+  totalRevenue: "Total Revenue",
+  totalCvs: "Total CVs",
+  firstInterviews: "First Interviews",
+  totalPlacements: "Total Placements",
+  revenuePerCv: "Revenue Per CV",
+  revenuePerInterview: "Revenue Per Interview",
+  recruiterCost: "Recruitment Cost",
+  accountManagementCost: "Account Management Cost",
+  businessCost: "Business Cost",
   updated: "Updated",
 };
 
 // Which figure the numeric filter applies to.
-type MetricView = "revenue" | "cvCost" | "interviewCost";
+type MetricView = AccountStatColumn;
 
 const METRIC_VIEW_LABELS: Record<MetricView, string> = {
-  revenue: "Revenue",
-  cvCost: "Revenue Per CV",
-  interviewCost: "Revenue Per Interview",
+  totalRevenue: "Total Revenue", totalCvs: "Total CVs", firstInterviews: "First Interviews",
+  totalPlacements: "Total Placements", revenuePerCv: "Revenue Per CV", revenuePerInterview: "Revenue Per Interview",
+  recruiterCost: "Recruitment Cost", accountManagementCost: "Account Management Cost", businessCost: "Business Cost",
 };
 
 function metricValue(a: AccountListItem, view: MetricView): number | null {
-  if (view === "revenue") return a.totalRevenue;
-  if (view === "cvCost") return a.cvCost;
-  return a.interviewCost;
+  switch (view) {
+    case "totalRevenue": return a.totalRevenue;
+    case "totalCvs": return a.totalCvs;
+    case "firstInterviews": return a.firstInterviews;
+    case "totalPlacements": return a.totalPlacements;
+    case "revenuePerCv": return a.cvCost;
+    case "revenuePerInterview": return a.interviewCost;
+    case "recruiterCost": return a.recruiterCost;
+    case "accountManagementCost": return a.accountManagementCost;
+    case "businessCost": return a.businessCost;
+  }
+}
+
+const COLUMN_LABELS: Record<AccountStatColumn, string> = {
+  totalRevenue: "Total Revenue", totalCvs: "Total CVs", firstInterviews: "First Interviews",
+  totalPlacements: "Total Placements", revenuePerCv: "Revenue Per CV", revenuePerInterview: "Revenue Per Interview",
+  recruiterCost: "Recruitment Cost", accountManagementCost: "Account Management Cost", businessCost: "Business Cost",
+};
+
+function displayStat(a: AccountListItem, column: AccountStatColumn): string {
+  if (column === "totalRevenue") return a.totalRevenue === null ? formatMultiCurrency(a.revenue, 0) : formatCurrency(a.totalRevenue, "GBP", 0);
+  const value = metricValue(a, column);
+  if (column === "totalCvs" || column === "firstInterviews" || column === "totalPlacements") return formatNumber(value);
+  return formatCurrency(value, "GBP", 0);
 }
 
 function SortableHead({
@@ -117,11 +146,13 @@ const METRIC_OP_LABELS: Record<MetricOp, string> = {
 
 export function AccountsList({
   accounts,
+  visibleStatColumns: initialVisibleStatColumns,
   initialSearch,
   initialDate,
   onNavigate,
 }: {
   accounts: AccountListItem[];
+  visibleStatColumns: AccountStatColumn[];
   initialSearch: string;
   initialDate: { preset: DatePreset; customStart: string; customEnd: string };
   onNavigate: () => void;
@@ -181,11 +212,13 @@ export function AccountsList({
   }
   const loading = query !== dataQuery;
 
-  const [view, setView] = React.useState<MetricView>("revenue");
+  const [view, setView] = React.useState<MetricView>("totalRevenue");
   const [metricOp, setMetricOp] = React.useState<MetricOp>("any");
   const [metricFilterValue, setMetricFilterValue] = React.useState("");
   const [metricFilterValue2, setMetricFilterValue2] = React.useState("");
   const [sortBy, setSortBy] = React.useState<SortKey>("name");
+  const [visibleStatColumns, setVisibleStatColumns] = React.useState(initialVisibleStatColumns);
+  const [savingColumns, setSavingColumns] = React.useState(false);
   const [sortDesc, setSortDesc] = React.useState(false);
   const [page, setPage] = React.useState(1);
 
@@ -246,8 +279,8 @@ export function AccountsList({
       else if (sortBy === "updated") cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
       else {
         // Not on file sorts below every real figure in either direction.
-        const av = metricValue(a, sortBy);
-        const bv = metricValue(b, sortBy);
+        const av = metricValue(a, sortBy as AccountStatColumn);
+        const bv = metricValue(b, sortBy as AccountStatColumn);
         if (av === null && bv === null) return 0;
         if (av === null) return 1;
         if (bv === null) return -1;
@@ -278,6 +311,22 @@ export function AccountsList({
   function updateDatePreset(value: DatePreset) {
     setDatePreset(value);
     setPage(1);
+  }
+
+  async function toggleColumn(column: AccountStatColumn) {
+    const next = visibleStatColumns.includes(column)
+      ? visibleStatColumns.filter((item) => item !== column)
+      : ACCOUNT_STAT_COLUMNS.filter((item) => visibleStatColumns.includes(item) || item === column);
+    setVisibleStatColumns(next);
+    setSavingColumns(true);
+    try {
+      await saveAccountStatColumns(next);
+    } catch (error) {
+      setVisibleStatColumns(visibleStatColumns);
+      toast.error("Could not save column preferences", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setSavingColumns(false);
+    }
   }
 
   function updateMetricOp(value: MetricOp) {
@@ -442,7 +491,7 @@ export function AccountsList({
                   <Input
                     type="number"
                     inputMode="decimal"
-                    placeholder="$"
+                    placeholder={view === "totalCvs" || view === "firstInterviews" || view === "totalPlacements" ? "0" : "£"}
                     value={metricFilterValue}
                     onChange={(e) => {
                       setMetricFilterValue(e.target.value);
@@ -456,7 +505,7 @@ export function AccountsList({
                       <Input
                         type="number"
                         inputMode="decimal"
-                        placeholder="$"
+                        placeholder={view === "totalCvs" || view === "firstInterviews" || view === "totalPlacements" ? "0" : "£"}
                         value={metricFilterValue2}
                         onChange={(e) => {
                           setMetricFilterValue2(e.target.value);
@@ -485,6 +534,24 @@ export function AccountsList({
               ))}
             </SelectContent>
           </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="bg-card" disabled={savingColumns}>
+                <Settings2 className="size-3.5" /> Columns
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64">
+              <p className="mb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Account statistics</p>
+              <div className="flex flex-col gap-1">
+                {ACCOUNT_STAT_COLUMNS.map((column) => (
+                  <label key={column} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-muted">
+                    <Checkbox checked={visibleStatColumns.includes(column)} onCheckedChange={() => void toggleColumn(column)} />
+                    {COLUMN_LABELS[column]}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             variant="outline"
             size="icon"
@@ -515,9 +582,7 @@ export function AccountsList({
                 <TableRow>
                   <SortableHead label="Company" active={sortBy === "name"} desc={sortDesc} onClick={() => toggleSort("name")} />
                   <SortableHead label="Owner" active={sortBy === "owner"} desc={sortDesc} onClick={() => toggleSort("owner")} />
-                  <SortableHead label="Revenue" className="text-right" active={sortBy === "revenue"} desc={sortDesc} onClick={() => toggleSort("revenue")} />
-                  <SortableHead label="Revenue Per CV" className="text-right" active={sortBy === "cvCost"} desc={sortDesc} onClick={() => toggleSort("cvCost")} />
-                  <SortableHead label="Revenue Per Interview" className="text-right" active={sortBy === "interviewCost"} desc={sortDesc} onClick={() => toggleSort("interviewCost")} />
+                  {visibleStatColumns.map((column) => <SortableHead key={column} label={COLUMN_LABELS[column]} className="text-right" active={sortBy === column} desc={sortDesc} onClick={() => toggleSort(column)} />)}
                   <SortableHead label="Updated" className="text-right" active={sortBy === "updated"} desc={sortDesc} onClick={() => toggleSort("updated")} />
                   <TableHead className="w-8" />
                 </TableRow>
@@ -525,7 +590,7 @@ export function AccountsList({
               <TableBody>
                 {paged.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={visibleStatColumns.length + 4} className="py-10 text-center text-sm text-muted-foreground">
                       No accounts match your filters.
                     </TableCell>
                   </TableRow>
@@ -541,9 +606,7 @@ export function AccountsList({
                   >
                     <TableCell className="font-medium">{a.companyName}</TableCell>
                     <TableCell className="text-muted-foreground">{a.ownedBy ?? UNASSIGNED}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.totalRevenue, "GBP", 0)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.cvCost, "GBP", 0)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(a.interviewCost, "GBP", 0)}</TableCell>
+                    {visibleStatColumns.map((column) => <TableCell key={column} className="text-right tabular-nums">{displayStat(a, column)}</TableCell>)}
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.updatedAt)}</TableCell>
                     <TableCell>
                       <ChevronRight className="size-4 -translate-x-1 text-muted-foreground/0 transition-all group-hover:translate-x-0 group-hover:text-primary" />

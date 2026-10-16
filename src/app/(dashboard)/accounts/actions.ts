@@ -4,6 +4,8 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireModule } from "@/lib/supabase/auth-server";
 import { getGbpExchangeRates, convertToGbp } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
+import { getSupabaseAuthServerClient } from "@/lib/supabase/auth-server";
+import { ACCOUNT_STAT_COLUMNS, type AccountStatColumn } from "@/lib/data/accounts";
 import {
   EXCLUDED_JOB_TYPES,
   QUALITATIVE_METRICS,
@@ -23,6 +25,18 @@ const FIRST_INTERVIEW_ACTIVITY_KEYS = ["client_interview", "moved_to_1st_stage_i
 // for them here.)
 const FEE_TYPE_PERCENTAGE = 1;
 const FEE_TYPE_FLAT = 2;
+
+export async function saveAccountStatColumns(columns: AccountStatColumn[]) {
+  await requireModule("accounts");
+  const auth = await getSupabaseAuthServerClient();
+  const { data: { user }, error: authError } = await auth.auth.getUser();
+  if (authError || !user) throw new Error("You must be signed in to save account columns.");
+  if (!Array.isArray(columns) || columns.some((column) => !ACCOUNT_STAT_COLUMNS.includes(column))) {
+    throw new Error("Invalid account column selection.");
+  }
+  const { error } = await auth.auth.updateUser({ data: { account_stat_columns: columns } });
+  if (error) throw new Error(`Failed to save account columns: ${error.message}`);
+}
 
 export interface AccountMetrics {
   totalCvs: number;
