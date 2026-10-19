@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Banknote, Calculator, CheckCircle2, FileText, Loader2, MessagesSquare } from "lucide-react";
+import { Banknote, Calculator, CheckCircle2, FileText, Loader2, MessagesSquare, TrendingUp } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UkDateInput } from "@/components/ui/uk-date-input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,13 @@ import { cn } from "@/lib/utils";
 // currency breakdown rather than showing a wrong or missing number.
 function formatRevenue(metrics: AccountMetricsData): string {
   return metrics.revenueGbp !== null ? formatCurrency(metrics.revenueGbp, "GBP", 0) : formatMultiCurrency(metrics.revenue, 0);
+}
+
+// Same as the accounts list's Total Profit column: null when revenue can't be
+// converted to GBP or a cost rate isn't set in Model config.
+function totalProfit(metrics: AccountMetricsData): number | null {
+  if (metrics.revenueGbp === null || metrics.businessCost === null) return null;
+  return metrics.revenueGbp - metrics.businessCost;
 }
 
 const TONES = {
@@ -190,6 +197,13 @@ export function AccountMetrics({
           hint="Recruiter cost + account management cost"
           tone="violet"
           icon={Banknote}
+        />
+        <MetricCard
+          label="Total profit"
+          value={metrics ? formatCurrency(totalProfit(metrics), "GBP", 0) : "—"}
+          hint="Total revenue − business cost"
+          tone="emerald"
+          icon={TrendingUp}
         />
       </div>
       <Badge variant="outline" className="w-fit border-transparent bg-muted text-[10px] tracking-wide text-muted-foreground uppercase">
