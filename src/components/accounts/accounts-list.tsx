@@ -24,6 +24,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   name: "Company",
   owner: "Owner",
   totalRevenue: "Total Revenue",
+  totalJobs: "Jobs",
   totalCvs: "Total CVs",
   firstInterviews: "First Interviews",
   totalPlacements: "Total Placements",
@@ -32,6 +33,8 @@ const SORT_LABELS: Record<SortKey, string> = {
   recruiterCost: "Recruitment Cost",
   accountManagementCost: "Account Management Cost",
   businessCost: "Business Cost",
+  totalProfit: "Total Profit",
+  healthScore: "Account Health Score",
   updated: "Updated",
 };
 
@@ -39,14 +42,16 @@ const SORT_LABELS: Record<SortKey, string> = {
 type MetricView = AccountStatColumn;
 
 const METRIC_VIEW_LABELS: Record<MetricView, string> = {
-  totalRevenue: "Total Revenue", totalCvs: "Total CVs", firstInterviews: "First Interviews",
+  totalRevenue: "Total Revenue", totalJobs: "Jobs", totalCvs: "Total CVs", firstInterviews: "First Interviews",
   totalPlacements: "Total Placements", revenuePerCv: "Revenue Per CV", revenuePerInterview: "Revenue Per Interview",
   recruiterCost: "Recruitment Cost", accountManagementCost: "Account Management Cost", businessCost: "Business Cost",
+  totalProfit: "Total Profit", healthScore: "Account Health Score",
 };
 
 function metricValue(a: AccountListItem, view: MetricView): number | null {
   switch (view) {
     case "totalRevenue": return a.totalRevenue;
+    case "totalJobs": return a.totalJobs;
     case "totalCvs": return a.totalCvs;
     case "firstInterviews": return a.firstInterviews;
     case "totalPlacements": return a.totalPlacements;
@@ -55,19 +60,25 @@ function metricValue(a: AccountListItem, view: MetricView): number | null {
     case "recruiterCost": return a.recruiterCost;
     case "accountManagementCost": return a.accountManagementCost;
     case "businessCost": return a.businessCost;
+    case "totalProfit": return a.totalProfit;
+    case "healthScore": return a.healthScore;
   }
 }
 
 const COLUMN_LABELS: Record<AccountStatColumn, string> = {
-  totalRevenue: "Total Revenue", totalCvs: "Total CVs", firstInterviews: "First Interviews",
+  totalRevenue: "Total Revenue", totalJobs: "Jobs", totalCvs: "Total CVs", firstInterviews: "First Interviews",
   totalPlacements: "Total Placements", revenuePerCv: "Revenue Per CV", revenuePerInterview: "Revenue Per Interview",
   recruiterCost: "Recruitment Cost", accountManagementCost: "Account Management Cost", businessCost: "Business Cost",
+  totalProfit: "Total Profit", healthScore: "Account Health Score",
 };
+
+// Plain numbers; every other stat column is a GBP amount.
+const NON_CURRENCY_COLUMNS: AccountStatColumn[] = ["totalJobs", "totalCvs", "firstInterviews", "totalPlacements", "healthScore"];
 
 function displayStat(a: AccountListItem, column: AccountStatColumn): string {
   if (column === "totalRevenue") return a.totalRevenue === null ? formatMultiCurrency(a.revenue, 0) : formatCurrency(a.totalRevenue, "GBP", 0);
   const value = metricValue(a, column);
-  if (column === "totalCvs" || column === "firstInterviews" || column === "totalPlacements") return formatNumber(value);
+  if (NON_CURRENCY_COLUMNS.includes(column)) return formatNumber(value);
   return formatCurrency(value, "GBP", 0);
 }
 
@@ -491,7 +502,7 @@ export function AccountsList({
                   <Input
                     type="number"
                     inputMode="decimal"
-                    placeholder={view === "totalCvs" || view === "firstInterviews" || view === "totalPlacements" ? "0" : "£"}
+                    placeholder={NON_CURRENCY_COLUMNS.includes(view) ? "0" : "£"}
                     value={metricFilterValue}
                     onChange={(e) => {
                       setMetricFilterValue(e.target.value);
@@ -505,7 +516,7 @@ export function AccountsList({
                       <Input
                         type="number"
                         inputMode="decimal"
-                        placeholder={view === "totalCvs" || view === "firstInterviews" || view === "totalPlacements" ? "0" : "£"}
+                        placeholder={NON_CURRENCY_COLUMNS.includes(view) ? "0" : "£"}
                         value={metricFilterValue2}
                         onChange={(e) => {
                           setMetricFilterValue2(e.target.value);

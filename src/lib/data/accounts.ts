@@ -4,6 +4,7 @@ import { normalizeDomain } from "@/lib/domain";
 import { convertToGbp, getGbpExchangeRates } from "@/lib/exchange-rates";
 import { getModelSettings } from "@/lib/data/model-settings";
 import type { CurrencyAmount } from "@/lib/format";
+import { computeAccountHealth } from "@/lib/account-health";
 
 // Mirrors the real `active_accounts` + `active_accounts_jobs` tables and
 // their currency/fee-type lookups. Separate dataset from `companies` — no
@@ -29,9 +30,15 @@ export interface AccountListItem {
   totalCvs: number;
   firstInterviews: number;
   totalPlacements: number;
+  totalJobs: number;
   recruiterCost: number | null;
   accountManagementCost: number | null;
   businessCost: number | null;
+  // totalRevenue - businessCost. Null when either side is unknown.
+  totalProfit: number | null;
+  // Same score as the Account health tile on the detail page. Built from the
+  // scorecard ratings and talent insights, so it ignores the date range.
+  healthScore: number;
   revenueCurrencyCode: string | null;
   // totalRevenue / total CVs and / total first interviews, scoped to the
   // same date range as totalRevenue. Null when there are none.
@@ -41,8 +48,9 @@ export interface AccountListItem {
 }
 
 export const ACCOUNT_STAT_COLUMNS = [
-  "totalRevenue", "totalCvs", "firstInterviews", "totalPlacements", "revenuePerCv",
-  "revenuePerInterview", "recruiterCost", "accountManagementCost", "businessCost",
+  "totalRevenue", "totalJobs", "totalCvs", "firstInterviews", "totalPlacements", "revenuePerCv",
+  "revenuePerInterview", "recruiterCost", "accountManagementCost", "businessCost", "totalProfit",
+  "healthScore",
 ] as const;
 export type AccountStatColumn = (typeof ACCOUNT_STAT_COLUMNS)[number];
 export const DEFAULT_ACCOUNT_STAT_COLUMNS: AccountStatColumn[] = ["totalRevenue", "revenuePerCv", "revenuePerInterview"];
@@ -84,6 +92,14 @@ interface AccountListRow {
   total_revenue: number | null;
   updated_at: string;
   revenue_currency: { code: string; symbol: string } | null;
+  relationship_strength: number | null;
+  delivery_satisfaction: number | null;
+  growth_potential: number | null;
+  payment_reliability: number | null;
+  strategic_fit: number | null;
+  headcount_change: number | null;
+  attrition: number | null;
+  avg_tenure: number | null;
 }
 
 interface AccountListPlacementRow {
@@ -207,19 +223,22 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
   };
   let accountsQuery = supabase
     .from("active_accounts")
-    .select("company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol)")
+    .select(
+      "company_id, company_name, status, owned_by, total_revenue, updated_at, revenue_currency:currencies!revenue_currency_id(code, symbol), relationship_strength, delivery_satisfaction, growth_potential, payment_reliability, strategic_fit, headcount_change, attrition, avg_tenure",
+    )
     .order("company_name");
   if (search) {
     accountsQuery = accountsQuery.ilike("company_name", `%${search}%`);
   }
 
-  const [{ data, error }, placementRows, jobRows, { rates }, eventRows, modelSettings] = await Promise.all([
+  const [{ data, error }, placementRows, jobRows, { rates }, eventRows, modelSettings, healthWeights] = await Promise.all([
     accountsQuery,
     fetchPlacementRows(),
     fetchJobRows(),
     getGbpExchangeRates(),
     fetchCvInterviewEventRows(supabase, range),
     getModelSettings(),
+    getHealthWeights(),
   ]);
   if (error) throw new Error(`Failed to load active_accounts: ${error.message}`);
 
@@ -274,6 +293,18 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
     const totalJobs = includedJobCountByCompany.get(r.company_id) ?? 0;
     const recruiterCost = modelSettings.cv_cost !== null ? totalCvs * modelSettings.cv_cost : null;
     const accountManagementCost = modelSettings.interview_cost !== null ? totalJobs * modelSettings.interview_cost : null;
+    const businessCost = recruiterCost !== null && accountManagementCost !== null ? recruiterCost + accountManagementCost : null;
+    const health = computeAccountHealth(
+      {
+        relationship_strength: r.relationship_strength,
+        delivery_satisfaction: r.delivery_satisfaction,
+        growth_potential: r.growth_potential,
+        payment_reliability: r.payment_reliability,
+        strategic_fit: r.strategic_fit,
+      },
+      { headcountChange: r.headcount_change, attrition: r.attrition, avgTenure: r.avg_tenure },
+      healthWeights,
+    );
     return {
       companyId: r.company_id,
       companyName: r.company_name,
@@ -285,10 +316,13 @@ export async function getAccountsList(search?: string, range?: DateRange): Promi
       totalCvs,
       firstInterviews: interviewCount,
       totalPlacements,
+      totalJobs,
       revenue: Array.from(revenueCurrencyByCompany.get(r.company_id)?.entries() ?? []).map(([code, amount]) => ({ code, amount })),
       recruiterCost,
       accountManagementCost,
-      businessCost: recruiterCost !== null && accountManagementCost !== null ? recruiterCost + accountManagementCost : null,
+      businessCost,
+      totalProfit: totalRevenue !== null && businessCost !== null ? totalRevenue - businessCost : null,
+      healthScore: health.score,
       ownedBy: r.owned_by,
       totalRevenue,
       revenueCurrencyCode: "GBP",
